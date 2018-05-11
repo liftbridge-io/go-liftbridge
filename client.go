@@ -1,4 +1,4 @@
-//go:generate protoc -I=. --gofast_out=plugins=grpc:. ./proto/api.proto
+//go:generate protoc --gofast_out=plugins=grpc:. ./proto/api.proto
 
 package jetbridge
 

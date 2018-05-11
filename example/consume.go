@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/tylertreat/go-jetbridge"
 	"golang.org/x/net/context"
 )
@@ -12,8 +14,16 @@ func main() {
 		panic(err)
 	}
 	defer client.Close()
-	if err := client.CreateStream(context.Background(), "foo", "foo-stream", 2); err != nil {
+	ctx := context.Background()
+	stream, err := client.ConsumeStream(ctx, "foo", "foo-stream", 0)
+	if err != nil {
 		panic(err)
 	}
-	println("created stream foo-stream")
+	for {
+		msg, err := stream.Recv()
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(msg.Offset, string(msg.Value))
+	}
 }

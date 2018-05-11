@@ -1,7 +1,44 @@
 syntax = "proto3";
 package proto;
 
-import "messages.proto";
+
+// CreateStreamRequest is sent to create a new stream.
+message CreateStreamRequest {
+    string subject              = 1; // Stream NATS subject
+    string name                 = 2; // Stream name (unique per subject)
+    string consumerGroup        = 3; // Partitions NATS subject amongst group members
+    int32  replicationFactor    = 4; // Number of stream replicas
+}
+
+// CreateStreamResponse is sent by server after creating a stream.
+message CreateStreamResponse {
+    // Intentionally empty.
+}
+
+message ConsumeStreamRequest {
+    string subject  = 1;
+    string name     = 2;
+    int64  offset   = 3;
+}
+
+message Message {
+    int64               offset    = 1;
+    bytes               key       = 2;
+    bytes               value     = 3;
+    int64               timestamp = 4;
+    string              subject   = 5;
+    string              reply     = 6;
+    map<string, bytes>  headers   = 7;
+    string              ackInbox  = 8;
+}
+
+message Ack {
+    string streamSubject = 1;
+    string streamName    = 2;
+    string msgSubject    = 3;
+    int64  offset        = 4;
+    string ackInbox      = 5;
+}
 
 
 service API {
