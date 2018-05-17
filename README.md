@@ -1,2 +1,2 @@
-# go-jetbridge
-Go client for Jetbridge. https://github.com/tylertreat/jetbridge
+# go-liftbridge
+Go client for Liftbridge. https://github.com/tylertreat/liftbridge
