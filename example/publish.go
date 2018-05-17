@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/nats-io/go-nats"
-	"github.com/tylertreat/go-jetbridge"
+	"github.com/tylertreat/go-liftbridge"
 	"strconv"
 	"sync"
 )
@@ -20,7 +20,7 @@ func main() {
 	var wg sync.WaitGroup
 
 	sub, err := conn.Subscribe(ackInbox, func(m *nats.Msg) {
-		ack, err := jetbridge.UnmarshalAck(m.Data)
+		ack, err := liftbridge.UnmarshalAck(m.Data)
 		if err != nil {
 			panic(err)
 		}
@@ -35,7 +35,7 @@ func main() {
 	count := 5
 	wg.Add(count)
 	for i := 0; i < count; i++ {
-		m := jetbridge.NewEnvelope([]byte("test"), []byte(strconv.Itoa(i)), ackInbox)
+		m := liftbridge.NewEnvelope([]byte("test"), []byte(strconv.Itoa(i)), ackInbox)
 		if err := conn.Publish("foo", m); err != nil {
 			panic(err)
 		}

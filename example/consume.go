@@ -3,13 +3,13 @@ package main
 import (
 	"fmt"
 
-	"github.com/tylertreat/go-jetbridge"
+	"github.com/tylertreat/go-liftbridge"
 	"golang.org/x/net/context"
 )
 
 func main() {
 	addr := "localhost:9292"
-	client, err := jetbridge.Connect(addr)
+	client, err := liftbridge.Connect(addr)
 	if err != nil {
 		panic(err)
 	}

@@ -1,12 +1,12 @@
 //go:generate protoc --gofast_out=plugins=grpc:. ./proto/api.proto
 
-package jetbridge
+package liftbridge
 
 import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
-	"github.com/tylertreat/go-jetbridge/proto"
+	"github.com/tylertreat/go-liftbridge/proto"
 )
 
 var (
