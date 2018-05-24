@@ -15,10 +15,42 @@ message CreateStreamResponse {
     // Intentionally empty.
 }
 
-message ConsumeStreamRequest {
+message SubscribeRequest {
     string subject  = 1;
     string name     = 2;
     int64  offset   = 3;
+}
+
+message FetchMetadataRequest {
+    repeated StreamDescriptor streams = 1;
+}
+
+message FetchMetadataResponse {
+    repeated Broker         brokers  = 1;
+    repeated StreamMetadata metadata = 2;
+}
+
+message Broker {
+    string id   = 1;
+    string host = 2;
+    int32  port = 3;
+}
+
+message StreamDescriptor {
+    string subject = 1;
+    string name    = 2;
+}
+
+message StreamMetadata {
+    enum Error {
+        OK             = 0;
+        UNKNOWN_STREAM = 1;
+    }
+    StreamDescriptor stream   = 1;
+    Error            error    = 2;
+    string           leader   = 3;
+    repeated string  replicas = 4;
+    repeated string  isr      = 5;
 }
 
 message Message {
@@ -43,5 +75,6 @@ message Ack {
 
 service API {
     rpc CreateStream(CreateStreamRequest) returns (CreateStreamResponse) {}
-    rpc ConsumeStream(ConsumeStreamRequest) returns (stream Message) {}
+    rpc Subscribe(SubscribeRequest) returns (stream Message) {}
+    rpc FetchMetadata(FetchMetadataRequest) returns (FetchMetadataResponse) {}
 }

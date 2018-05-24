@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-
 	"github.com/tylertreat/go-liftbridge"
 	"golang.org/x/net/context"
 )
@@ -14,16 +13,9 @@ func main() {
 		panic(err)
 	}
 	defer client.Close()
-	ctx := context.Background()
-	stream, err := client.ConsumeStream(ctx, "foo", "foo-stream", 0)
+	resp, err := client.FetchMetadata(context.Background())
 	if err != nil {
 		panic(err)
 	}
-	for {
-		msg, err := stream.Recv()
-		if err != nil {
-			panic(err)
-		}
-		fmt.Println(msg.Offset, string(msg.Value))
-	}
+	fmt.Printf("%+v\n", resp)
 }

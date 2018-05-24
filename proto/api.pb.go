@@ -10,7 +10,12 @@
 	It has these top-level messages:
 		CreateStreamRequest
 		CreateStreamResponse
-		ConsumeStreamRequest
+		SubscribeRequest
+		FetchMetadataRequest
+		FetchMetadataResponse
+		Broker
+		StreamDescriptor
+		StreamMetadata
 		Message
 		Ack
 */
@@ -35,6 +40,27 @@ var _ = math.Inf
 // A compilation error at this line likely means your copy of the
 // proto package needs to be updated.
 const _ = proto1.ProtoPackageIsVersion2 // please upgrade the proto package
+
+type StreamMetadata_Error int32
+
+const (
+	StreamMetadata_OK             StreamMetadata_Error = 0
+	StreamMetadata_UNKNOWN_STREAM StreamMetadata_Error = 1
+)
+
+var StreamMetadata_Error_name = map[int32]string{
+	0: "OK",
+	1: "UNKNOWN_STREAM",
+}
+var StreamMetadata_Error_value = map[string]int32{
+	"OK":             0,
+	"UNKNOWN_STREAM": 1,
+}
+
+func (x StreamMetadata_Error) String() string {
+	return proto1.EnumName(StreamMetadata_Error_name, int32(x))
+}
+func (StreamMetadata_Error) EnumDescriptor() ([]byte, []int) { return fileDescriptorApi, []int{7, 0} }
 
 // CreateStreamRequest is sent to create a new stream.
 type CreateStreamRequest struct {
@@ -86,36 +112,180 @@ func (m *CreateStreamResponse) String() string            { return proto1.Compac
 func (*CreateStreamResponse) ProtoMessage()               {}
 func (*CreateStreamResponse) Descriptor() ([]byte, []int) { return fileDescriptorApi, []int{1} }
 
-type ConsumeStreamRequest struct {
+type SubscribeRequest struct {
 	Subject string `protobuf:"bytes,1,opt,name=subject,proto3" json:"subject,omitempty"`
 	Name    string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	Offset  int64  `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
 }
 
-func (m *ConsumeStreamRequest) Reset()                    { *m = ConsumeStreamRequest{} }
-func (m *ConsumeStreamRequest) String() string            { return proto1.CompactTextString(m) }
-func (*ConsumeStreamRequest) ProtoMessage()               {}
-func (*ConsumeStreamRequest) Descriptor() ([]byte, []int) { return fileDescriptorApi, []int{2} }
+func (m *SubscribeRequest) Reset()                    { *m = SubscribeRequest{} }
+func (m *SubscribeRequest) String() string            { return proto1.CompactTextString(m) }
+func (*SubscribeRequest) ProtoMessage()               {}
+func (*SubscribeRequest) Descriptor() ([]byte, []int) { return fileDescriptorApi, []int{2} }
 
-func (m *ConsumeStreamRequest) GetSubject() string {
+func (m *SubscribeRequest) GetSubject() string {
 	if m != nil {
 		return m.Subject
 	}
 	return ""
 }
 
-func (m *ConsumeStreamRequest) GetName() string {
+func (m *SubscribeRequest) GetName() string {
 	if m != nil {
 		return m.Name
 	}
 	return ""
 }
 
-func (m *ConsumeStreamRequest) GetOffset() int64 {
+func (m *SubscribeRequest) GetOffset() int64 {
 	if m != nil {
 		return m.Offset
 	}
 	return 0
+}
+
+type FetchMetadataRequest struct {
+	Streams []*StreamDescriptor `protobuf:"bytes,1,rep,name=streams" json:"streams,omitempty"`
+}
+
+func (m *FetchMetadataRequest) Reset()                    { *m = FetchMetadataRequest{} }
+func (m *FetchMetadataRequest) String() string            { return proto1.CompactTextString(m) }
+func (*FetchMetadataRequest) ProtoMessage()               {}
+func (*FetchMetadataRequest) Descriptor() ([]byte, []int) { return fileDescriptorApi, []int{3} }
+
+func (m *FetchMetadataRequest) GetStreams() []*StreamDescriptor {
+	if m != nil {
+		return m.Streams
+	}
+	return nil
+}
+
+type FetchMetadataResponse struct {
+	Brokers  []*Broker         `protobuf:"bytes,1,rep,name=brokers" json:"brokers,omitempty"`
+	Metadata []*StreamMetadata `protobuf:"bytes,2,rep,name=metadata" json:"metadata,omitempty"`
+}
+
+func (m *FetchMetadataResponse) Reset()                    { *m = FetchMetadataResponse{} }
+func (m *FetchMetadataResponse) String() string            { return proto1.CompactTextString(m) }
+func (*FetchMetadataResponse) ProtoMessage()               {}
+func (*FetchMetadataResponse) Descriptor() ([]byte, []int) { return fileDescriptorApi, []int{4} }
+
+func (m *FetchMetadataResponse) GetBrokers() []*Broker {
+	if m != nil {
+		return m.Brokers
+	}
+	return nil
+}
+
+func (m *FetchMetadataResponse) GetMetadata() []*StreamMetadata {
+	if m != nil {
+		return m.Metadata
+	}
+	return nil
+}
+
+type Broker struct {
+	Id   string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Host string `protobuf:"bytes,2,opt,name=host,proto3" json:"host,omitempty"`
+	Port int32  `protobuf:"varint,3,opt,name=port,proto3" json:"port,omitempty"`
+}
+
+func (m *Broker) Reset()                    { *m = Broker{} }
+func (m *Broker) String() string            { return proto1.CompactTextString(m) }
+func (*Broker) ProtoMessage()               {}
+func (*Broker) Descriptor() ([]byte, []int) { return fileDescriptorApi, []int{5} }
+
+func (m *Broker) GetId() string {
+	if m != nil {
+		return m.Id
+	}
+	return ""
+}
+
+func (m *Broker) GetHost() string {
+	if m != nil {
+		return m.Host
+	}
+	return ""
+}
+
+func (m *Broker) GetPort() int32 {
+	if m != nil {
+		return m.Port
+	}
+	return 0
+}
+
+type StreamDescriptor struct {
+	Subject string `protobuf:"bytes,1,opt,name=subject,proto3" json:"subject,omitempty"`
+	Name    string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+}
+
+func (m *StreamDescriptor) Reset()                    { *m = StreamDescriptor{} }
+func (m *StreamDescriptor) String() string            { return proto1.CompactTextString(m) }
+func (*StreamDescriptor) ProtoMessage()               {}
+func (*StreamDescriptor) Descriptor() ([]byte, []int) { return fileDescriptorApi, []int{6} }
+
+func (m *StreamDescriptor) GetSubject() string {
+	if m != nil {
+		return m.Subject
+	}
+	return ""
+}
+
+func (m *StreamDescriptor) GetName() string {
+	if m != nil {
+		return m.Name
+	}
+	return ""
+}
+
+type StreamMetadata struct {
+	Stream   *StreamDescriptor    `protobuf:"bytes,1,opt,name=stream" json:"stream,omitempty"`
+	Error    StreamMetadata_Error `protobuf:"varint,2,opt,name=error,proto3,enum=proto.StreamMetadata_Error" json:"error,omitempty"`
+	Leader   string               `protobuf:"bytes,3,opt,name=leader,proto3" json:"leader,omitempty"`
+	Replicas []string             `protobuf:"bytes,4,rep,name=replicas" json:"replicas,omitempty"`
+	Isr      []string             `protobuf:"bytes,5,rep,name=isr" json:"isr,omitempty"`
+}
+
+func (m *StreamMetadata) Reset()                    { *m = StreamMetadata{} }
+func (m *StreamMetadata) String() string            { return proto1.CompactTextString(m) }
+func (*StreamMetadata) ProtoMessage()               {}
+func (*StreamMetadata) Descriptor() ([]byte, []int) { return fileDescriptorApi, []int{7} }
+
+func (m *StreamMetadata) GetStream() *StreamDescriptor {
+	if m != nil {
+		return m.Stream
+	}
+	return nil
+}
+
+func (m *StreamMetadata) GetError() StreamMetadata_Error {
+	if m != nil {
+		return m.Error
+	}
+	return StreamMetadata_OK
+}
+
+func (m *StreamMetadata) GetLeader() string {
+	if m != nil {
+		return m.Leader
+	}
+	return ""
+}
+
+func (m *StreamMetadata) GetReplicas() []string {
+	if m != nil {
+		return m.Replicas
+	}
+	return nil
+}
+
+func (m *StreamMetadata) GetIsr() []string {
+	if m != nil {
+		return m.Isr
+	}
+	return nil
 }
 
 type Message struct {
@@ -132,7 +302,7 @@ type Message struct {
 func (m *Message) Reset()                    { *m = Message{} }
 func (m *Message) String() string            { return proto1.CompactTextString(m) }
 func (*Message) ProtoMessage()               {}
-func (*Message) Descriptor() ([]byte, []int) { return fileDescriptorApi, []int{3} }
+func (*Message) Descriptor() ([]byte, []int) { return fileDescriptorApi, []int{8} }
 
 func (m *Message) GetOffset() int64 {
 	if m != nil {
@@ -201,7 +371,7 @@ type Ack struct {
 func (m *Ack) Reset()                    { *m = Ack{} }
 func (m *Ack) String() string            { return proto1.CompactTextString(m) }
 func (*Ack) ProtoMessage()               {}
-func (*Ack) Descriptor() ([]byte, []int) { return fileDescriptorApi, []int{4} }
+func (*Ack) Descriptor() ([]byte, []int) { return fileDescriptorApi, []int{9} }
 
 func (m *Ack) GetStreamSubject() string {
 	if m != nil {
@@ -241,9 +411,15 @@ func (m *Ack) GetAckInbox() string {
 func init() {
 	proto1.RegisterType((*CreateStreamRequest)(nil), "proto.CreateStreamRequest")
 	proto1.RegisterType((*CreateStreamResponse)(nil), "proto.CreateStreamResponse")
-	proto1.RegisterType((*ConsumeStreamRequest)(nil), "proto.ConsumeStreamRequest")
+	proto1.RegisterType((*SubscribeRequest)(nil), "proto.SubscribeRequest")
+	proto1.RegisterType((*FetchMetadataRequest)(nil), "proto.FetchMetadataRequest")
+	proto1.RegisterType((*FetchMetadataResponse)(nil), "proto.FetchMetadataResponse")
+	proto1.RegisterType((*Broker)(nil), "proto.Broker")
+	proto1.RegisterType((*StreamDescriptor)(nil), "proto.StreamDescriptor")
+	proto1.RegisterType((*StreamMetadata)(nil), "proto.StreamMetadata")
 	proto1.RegisterType((*Message)(nil), "proto.Message")
 	proto1.RegisterType((*Ack)(nil), "proto.Ack")
+	proto1.RegisterEnum("proto.StreamMetadata_Error", StreamMetadata_Error_name, StreamMetadata_Error_value)
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -258,7 +434,8 @@ const _ = grpc.SupportPackageIsVersion4
 
 type APIClient interface {
 	CreateStream(ctx context.Context, in *CreateStreamRequest, opts ...grpc.CallOption) (*CreateStreamResponse, error)
-	ConsumeStream(ctx context.Context, in *ConsumeStreamRequest, opts ...grpc.CallOption) (API_ConsumeStreamClient, error)
+	Subscribe(ctx context.Context, in *SubscribeRequest, opts ...grpc.CallOption) (API_SubscribeClient, error)
+	FetchMetadata(ctx context.Context, in *FetchMetadataRequest, opts ...grpc.CallOption) (*FetchMetadataResponse, error)
 }
 
 type aPIClient struct {
@@ -278,12 +455,12 @@ func (c *aPIClient) CreateStream(ctx context.Context, in *CreateStreamRequest, o
 	return out, nil
 }
 
-func (c *aPIClient) ConsumeStream(ctx context.Context, in *ConsumeStreamRequest, opts ...grpc.CallOption) (API_ConsumeStreamClient, error) {
-	stream, err := grpc.NewClientStream(ctx, &_API_serviceDesc.Streams[0], c.cc, "/proto.API/ConsumeStream", opts...)
+func (c *aPIClient) Subscribe(ctx context.Context, in *SubscribeRequest, opts ...grpc.CallOption) (API_SubscribeClient, error) {
+	stream, err := grpc.NewClientStream(ctx, &_API_serviceDesc.Streams[0], c.cc, "/proto.API/Subscribe", opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &aPIConsumeStreamClient{stream}
+	x := &aPISubscribeClient{stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -293,16 +470,16 @@ func (c *aPIClient) ConsumeStream(ctx context.Context, in *ConsumeStreamRequest,
 	return x, nil
 }
 
-type API_ConsumeStreamClient interface {
+type API_SubscribeClient interface {
 	Recv() (*Message, error)
 	grpc.ClientStream
 }
 
-type aPIConsumeStreamClient struct {
+type aPISubscribeClient struct {
 	grpc.ClientStream
 }
 
-func (x *aPIConsumeStreamClient) Recv() (*Message, error) {
+func (x *aPISubscribeClient) Recv() (*Message, error) {
 	m := new(Message)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
@@ -310,11 +487,21 @@ func (x *aPIConsumeStreamClient) Recv() (*Message, error) {
 	return m, nil
 }
 
+func (c *aPIClient) FetchMetadata(ctx context.Context, in *FetchMetadataRequest, opts ...grpc.CallOption) (*FetchMetadataResponse, error) {
+	out := new(FetchMetadataResponse)
+	err := grpc.Invoke(ctx, "/proto.API/FetchMetadata", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // Server API for API service
 
 type APIServer interface {
 	CreateStream(context.Context, *CreateStreamRequest) (*CreateStreamResponse, error)
-	ConsumeStream(*ConsumeStreamRequest, API_ConsumeStreamServer) error
+	Subscribe(*SubscribeRequest, API_SubscribeServer) error
+	FetchMetadata(context.Context, *FetchMetadataRequest) (*FetchMetadataResponse, error)
 }
 
 func RegisterAPIServer(s *grpc.Server, srv APIServer) {
@@ -339,25 +526,43 @@ func _API_CreateStream_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
-func _API_ConsumeStream_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(ConsumeStreamRequest)
+func _API_Subscribe_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(SubscribeRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(APIServer).ConsumeStream(m, &aPIConsumeStreamServer{stream})
+	return srv.(APIServer).Subscribe(m, &aPISubscribeServer{stream})
 }
 
-type API_ConsumeStreamServer interface {
+type API_SubscribeServer interface {
 	Send(*Message) error
 	grpc.ServerStream
 }
 
-type aPIConsumeStreamServer struct {
+type aPISubscribeServer struct {
 	grpc.ServerStream
 }
 
-func (x *aPIConsumeStreamServer) Send(m *Message) error {
+func (x *aPISubscribeServer) Send(m *Message) error {
 	return x.ServerStream.SendMsg(m)
+}
+
+func _API_FetchMetadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FetchMetadataRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(APIServer).FetchMetadata(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/proto.API/FetchMetadata",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(APIServer).FetchMetadata(ctx, req.(*FetchMetadataRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 var _API_serviceDesc = grpc.ServiceDesc{
@@ -368,11 +573,15 @@ var _API_serviceDesc = grpc.ServiceDesc{
 			MethodName: "CreateStream",
 			Handler:    _API_CreateStream_Handler,
 		},
+		{
+			MethodName: "FetchMetadata",
+			Handler:    _API_FetchMetadata_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "ConsumeStream",
-			Handler:       _API_ConsumeStream_Handler,
+			StreamName:    "Subscribe",
+			Handler:       _API_Subscribe_Handler,
 			ServerStreams: true,
 		},
 	},
@@ -438,7 +647,7 @@ func (m *CreateStreamResponse) MarshalTo(dAtA []byte) (int, error) {
 	return i, nil
 }
 
-func (m *ConsumeStreamRequest) Marshal() (dAtA []byte, err error) {
+func (m *SubscribeRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalTo(dAtA)
@@ -448,7 +657,7 @@ func (m *ConsumeStreamRequest) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ConsumeStreamRequest) MarshalTo(dAtA []byte) (int, error) {
+func (m *SubscribeRequest) MarshalTo(dAtA []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
@@ -469,6 +678,212 @@ func (m *ConsumeStreamRequest) MarshalTo(dAtA []byte) (int, error) {
 		dAtA[i] = 0x18
 		i++
 		i = encodeVarintApi(dAtA, i, uint64(m.Offset))
+	}
+	return i, nil
+}
+
+func (m *FetchMetadataRequest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *FetchMetadataRequest) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if len(m.Streams) > 0 {
+		for _, msg := range m.Streams {
+			dAtA[i] = 0xa
+			i++
+			i = encodeVarintApi(dAtA, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(dAtA[i:])
+			if err != nil {
+				return 0, err
+			}
+			i += n
+		}
+	}
+	return i, nil
+}
+
+func (m *FetchMetadataResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *FetchMetadataResponse) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if len(m.Brokers) > 0 {
+		for _, msg := range m.Brokers {
+			dAtA[i] = 0xa
+			i++
+			i = encodeVarintApi(dAtA, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(dAtA[i:])
+			if err != nil {
+				return 0, err
+			}
+			i += n
+		}
+	}
+	if len(m.Metadata) > 0 {
+		for _, msg := range m.Metadata {
+			dAtA[i] = 0x12
+			i++
+			i = encodeVarintApi(dAtA, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(dAtA[i:])
+			if err != nil {
+				return 0, err
+			}
+			i += n
+		}
+	}
+	return i, nil
+}
+
+func (m *Broker) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Broker) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if len(m.Id) > 0 {
+		dAtA[i] = 0xa
+		i++
+		i = encodeVarintApi(dAtA, i, uint64(len(m.Id)))
+		i += copy(dAtA[i:], m.Id)
+	}
+	if len(m.Host) > 0 {
+		dAtA[i] = 0x12
+		i++
+		i = encodeVarintApi(dAtA, i, uint64(len(m.Host)))
+		i += copy(dAtA[i:], m.Host)
+	}
+	if m.Port != 0 {
+		dAtA[i] = 0x18
+		i++
+		i = encodeVarintApi(dAtA, i, uint64(m.Port))
+	}
+	return i, nil
+}
+
+func (m *StreamDescriptor) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *StreamDescriptor) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if len(m.Subject) > 0 {
+		dAtA[i] = 0xa
+		i++
+		i = encodeVarintApi(dAtA, i, uint64(len(m.Subject)))
+		i += copy(dAtA[i:], m.Subject)
+	}
+	if len(m.Name) > 0 {
+		dAtA[i] = 0x12
+		i++
+		i = encodeVarintApi(dAtA, i, uint64(len(m.Name)))
+		i += copy(dAtA[i:], m.Name)
+	}
+	return i, nil
+}
+
+func (m *StreamMetadata) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *StreamMetadata) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.Stream != nil {
+		dAtA[i] = 0xa
+		i++
+		i = encodeVarintApi(dAtA, i, uint64(m.Stream.Size()))
+		n1, err := m.Stream.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n1
+	}
+	if m.Error != 0 {
+		dAtA[i] = 0x10
+		i++
+		i = encodeVarintApi(dAtA, i, uint64(m.Error))
+	}
+	if len(m.Leader) > 0 {
+		dAtA[i] = 0x1a
+		i++
+		i = encodeVarintApi(dAtA, i, uint64(len(m.Leader)))
+		i += copy(dAtA[i:], m.Leader)
+	}
+	if len(m.Replicas) > 0 {
+		for _, s := range m.Replicas {
+			dAtA[i] = 0x22
+			i++
+			l = len(s)
+			for l >= 1<<7 {
+				dAtA[i] = uint8(uint64(l)&0x7f | 0x80)
+				l >>= 7
+				i++
+			}
+			dAtA[i] = uint8(l)
+			i++
+			i += copy(dAtA[i:], s)
+		}
+	}
+	if len(m.Isr) > 0 {
+		for _, s := range m.Isr {
+			dAtA[i] = 0x2a
+			i++
+			l = len(s)
+			for l >= 1<<7 {
+				dAtA[i] = uint8(uint64(l)&0x7f | 0x80)
+				l >>= 7
+				i++
+			}
+			dAtA[i] = uint8(l)
+			i++
+			i += copy(dAtA[i:], s)
+		}
 	}
 	return i, nil
 }
@@ -637,7 +1052,7 @@ func (m *CreateStreamResponse) Size() (n int) {
 	return n
 }
 
-func (m *ConsumeStreamRequest) Size() (n int) {
+func (m *SubscribeRequest) Size() (n int) {
 	var l int
 	_ = l
 	l = len(m.Subject)
@@ -650,6 +1065,96 @@ func (m *ConsumeStreamRequest) Size() (n int) {
 	}
 	if m.Offset != 0 {
 		n += 1 + sovApi(uint64(m.Offset))
+	}
+	return n
+}
+
+func (m *FetchMetadataRequest) Size() (n int) {
+	var l int
+	_ = l
+	if len(m.Streams) > 0 {
+		for _, e := range m.Streams {
+			l = e.Size()
+			n += 1 + l + sovApi(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *FetchMetadataResponse) Size() (n int) {
+	var l int
+	_ = l
+	if len(m.Brokers) > 0 {
+		for _, e := range m.Brokers {
+			l = e.Size()
+			n += 1 + l + sovApi(uint64(l))
+		}
+	}
+	if len(m.Metadata) > 0 {
+		for _, e := range m.Metadata {
+			l = e.Size()
+			n += 1 + l + sovApi(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *Broker) Size() (n int) {
+	var l int
+	_ = l
+	l = len(m.Id)
+	if l > 0 {
+		n += 1 + l + sovApi(uint64(l))
+	}
+	l = len(m.Host)
+	if l > 0 {
+		n += 1 + l + sovApi(uint64(l))
+	}
+	if m.Port != 0 {
+		n += 1 + sovApi(uint64(m.Port))
+	}
+	return n
+}
+
+func (m *StreamDescriptor) Size() (n int) {
+	var l int
+	_ = l
+	l = len(m.Subject)
+	if l > 0 {
+		n += 1 + l + sovApi(uint64(l))
+	}
+	l = len(m.Name)
+	if l > 0 {
+		n += 1 + l + sovApi(uint64(l))
+	}
+	return n
+}
+
+func (m *StreamMetadata) Size() (n int) {
+	var l int
+	_ = l
+	if m.Stream != nil {
+		l = m.Stream.Size()
+		n += 1 + l + sovApi(uint64(l))
+	}
+	if m.Error != 0 {
+		n += 1 + sovApi(uint64(m.Error))
+	}
+	l = len(m.Leader)
+	if l > 0 {
+		n += 1 + l + sovApi(uint64(l))
+	}
+	if len(m.Replicas) > 0 {
+		for _, s := range m.Replicas {
+			l = len(s)
+			n += 1 + l + sovApi(uint64(l))
+		}
+	}
+	if len(m.Isr) > 0 {
+		for _, s := range m.Isr {
+			l = len(s)
+			n += 1 + l + sovApi(uint64(l))
+		}
 	}
 	return n
 }
@@ -942,7 +1447,7 @@ func (m *CreateStreamResponse) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ConsumeStreamRequest) Unmarshal(dAtA []byte) error {
+func (m *SubscribeRequest) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -965,10 +1470,10 @@ func (m *ConsumeStreamRequest) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ConsumeStreamRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: SubscribeRequest: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ConsumeStreamRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: SubscribeRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -1048,6 +1553,623 @@ func (m *ConsumeStreamRequest) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipApi(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthApi
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *FetchMetadataRequest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowApi
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: FetchMetadataRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: FetchMetadataRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Streams", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthApi
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Streams = append(m.Streams, &StreamDescriptor{})
+			if err := m.Streams[len(m.Streams)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipApi(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthApi
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *FetchMetadataResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowApi
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: FetchMetadataResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: FetchMetadataResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Brokers", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthApi
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Brokers = append(m.Brokers, &Broker{})
+			if err := m.Brokers[len(m.Brokers)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Metadata", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthApi
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Metadata = append(m.Metadata, &StreamMetadata{})
+			if err := m.Metadata[len(m.Metadata)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipApi(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthApi
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Broker) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowApi
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Broker: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Broker: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthApi
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Id = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Host", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthApi
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Host = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Port", wireType)
+			}
+			m.Port = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Port |= (int32(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipApi(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthApi
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *StreamDescriptor) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowApi
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: StreamDescriptor: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: StreamDescriptor: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Subject", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthApi
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Subject = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthApi
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Name = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipApi(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthApi
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *StreamMetadata) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowApi
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: StreamMetadata: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: StreamMetadata: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Stream", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthApi
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Stream == nil {
+				m.Stream = &StreamDescriptor{}
+			}
+			if err := m.Stream.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Error", wireType)
+			}
+			m.Error = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Error |= (StreamMetadata_Error(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Leader", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthApi
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Leader = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Replicas", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthApi
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Replicas = append(m.Replicas, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Isr", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthApi
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Isr = append(m.Isr, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipApi(dAtA[iNdEx:])
@@ -1718,34 +2840,49 @@ var (
 func init() { proto1.RegisterFile("proto/api.proto", fileDescriptorApi) }
 
 var fileDescriptorApi = []byte{
-	// 451 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xa4, 0x52, 0x4d, 0x6f, 0xd3, 0x40,
-	0x10, 0xcd, 0xc6, 0x71, 0xd2, 0x0e, 0x29, 0x94, 0x21, 0xaa, 0x2c, 0x17, 0x59, 0x91, 0xc5, 0x21,
-	0x07, 0x14, 0x50, 0x11, 0x12, 0xea, 0x09, 0xa8, 0xf8, 0xc8, 0x01, 0x84, 0xdc, 0x2b, 0x97, 0x8d,
-	0x99, 0x96, 0x90, 0xda, 0x6b, 0x76, 0xd7, 0x88, 0xfc, 0x0d, 0x2e, 0x70, 0xe3, 0xc6, 0x6f, 0xe1,
-	0xc8, 0x4f, 0x40, 0xe1, 0x8f, 0x20, 0xef, 0xc6, 0xed, 0xae, 0xc8, 0x8d, 0x93, 0x77, 0xde, 0x8c,
-	0x47, 0xef, 0xcd, 0x7b, 0x70, 0xa3, 0x92, 0x42, 0x8b, 0x7b, 0xbc, 0x5a, 0x4c, 0xcd, 0x0b, 0x43,
-	0xf3, 0x49, 0xbf, 0x32, 0xb8, 0x75, 0x22, 0x89, 0x6b, 0x3a, 0xd5, 0x92, 0x78, 0x91, 0xd1, 0xc7,
-	0x9a, 0x94, 0xc6, 0x08, 0x06, 0xaa, 0x9e, 0x7f, 0xa0, 0x5c, 0x47, 0x6c, 0xcc, 0x26, 0xbb, 0x59,
-	0x5b, 0x22, 0x42, 0xaf, 0xe4, 0x05, 0x45, 0x5d, 0x03, 0x9b, 0x37, 0xde, 0x81, 0xbd, 0x5c, 0x94,
-	0xaa, 0x2e, 0x48, 0xbe, 0x90, 0xa2, 0xae, 0xa2, 0xc0, 0x34, 0x7d, 0x10, 0xef, 0xc2, 0x4d, 0x49,
-	0xd5, 0xc5, 0x22, 0xe7, 0x7a, 0x21, 0xca, 0xe7, 0x3c, 0xd7, 0x42, 0x46, 0xbd, 0x31, 0x9b, 0x84,
-	0xd9, 0xbf, 0x8d, 0xf4, 0x00, 0x46, 0x3e, 0x31, 0x55, 0x89, 0x52, 0x51, 0xfa, 0x16, 0x46, 0x27,
-	0x76, 0xed, 0xff, 0x30, 0x3e, 0x80, 0xbe, 0x38, 0x3b, 0x53, 0xa4, 0x0d, 0xd5, 0x20, 0xdb, 0x54,
-	0xe9, 0x8f, 0x2e, 0x0c, 0x5e, 0x91, 0x52, 0xfc, 0xdc, 0x9d, 0x61, 0xee, 0x0c, 0xee, 0x43, 0xb0,
-	0xa4, 0x95, 0x59, 0x37, 0xcc, 0x9a, 0x27, 0x8e, 0x20, 0xfc, 0xc4, 0x2f, 0x6a, 0x32, 0xcb, 0x86,
-	0x99, 0x2d, 0xf0, 0x36, 0xec, 0xea, 0x45, 0x41, 0x4a, 0xf3, 0xa2, 0x32, 0x3a, 0x83, 0xec, 0x0a,
-	0x70, 0xf9, 0x86, 0x3e, 0xdf, 0x11, 0x84, 0xcd, 0x39, 0x56, 0x51, 0xdf, 0xe0, 0xb6, 0xc0, 0x87,
-	0x30, 0x78, 0x4f, 0xfc, 0x1d, 0x49, 0x15, 0x0d, 0xc6, 0xc1, 0xe4, 0xda, 0xd1, 0xa1, 0x75, 0x72,
-	0xba, 0xa1, 0x3b, 0x7d, 0x69, 0xbb, 0xcf, 0x4a, 0x2d, 0x57, 0x59, 0x3b, 0x8b, 0x31, 0xec, 0xf0,
-	0x7c, 0x39, 0x2b, 0xe7, 0xe2, 0x73, 0xb4, 0x63, 0xf6, 0x5d, 0xd6, 0xf1, 0x31, 0x0c, 0xdd, 0x9f,
-	0x5a, 0x61, 0xf6, 0x7c, 0xbe, 0xb0, 0xae, 0x23, 0xec, 0xb8, 0xfb, 0x88, 0xa5, 0xdf, 0x19, 0x04,
-	0x4f, 0xf2, 0x65, 0x63, 0xbd, 0x32, 0x3e, 0x9c, 0x7a, 0xc7, 0xf7, 0x41, 0x4c, 0x00, 0x2c, 0xf0,
-	0xfa, 0xca, 0x08, 0x07, 0x69, 0xfa, 0x85, 0x3a, 0x6f, 0x57, 0xd8, 0xf4, 0x38, 0x88, 0x63, 0x45,
-	0xcf, 0xb3, 0xc2, 0x55, 0x17, 0xfa, 0xea, 0x8e, 0xbe, 0x34, 0x0c, 0xdf, 0xcc, 0x70, 0x06, 0x43,
-	0x37, 0x48, 0x18, 0x6f, 0xee, 0xb6, 0x25, 0xf6, 0xf1, 0xe1, 0xd6, 0xde, 0x26, 0x79, 0x1d, 0x7c,
-	0x0c, 0x7b, 0x5e, 0xf6, 0xf0, 0x72, 0x7e, 0x4b, 0x22, 0xe3, 0xeb, 0xbe, 0x41, 0x69, 0xe7, 0x3e,
-	0x7b, 0xba, 0xff, 0x73, 0x9d, 0xb0, 0x5f, 0xeb, 0x84, 0xfd, 0x5e, 0x27, 0xec, 0xdb, 0x9f, 0xa4,
-	0x33, 0xef, 0x9b, 0xa1, 0x07, 0x7f, 0x03, 0x00, 0x00, 0xff, 0xff, 0xe4, 0x75, 0xed, 0xe8, 0xa2,
-	0x03, 0x00, 0x00,
+	// 691 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x54, 0x4f, 0x6f, 0x12, 0x41,
+	0x14, 0x67, 0x16, 0x16, 0xca, 0x93, 0x22, 0x8e, 0xb4, 0x6e, 0x68, 0x43, 0xc8, 0x6a, 0x22, 0x07,
+	0x43, 0x6d, 0x8d, 0x49, 0xd3, 0x53, 0x5b, 0x6d, 0x95, 0xd4, 0x52, 0x33, 0x68, 0xf4, 0x66, 0x86,
+	0x65, 0xda, 0xae, 0x14, 0x66, 0x9d, 0x19, 0x8c, 0xfd, 0x24, 0x7a, 0xf3, 0xe6, 0x67, 0xf1, 0xe8,
+	0xd1, 0x9b, 0xa6, 0x7e, 0x11, 0x33, 0x33, 0xbb, 0x74, 0xb7, 0x12, 0x13, 0x3d, 0xf1, 0xfe, 0xcd,
+	0x6f, 0x7f, 0xef, 0xf7, 0x1e, 0x0f, 0xae, 0x47, 0x82, 0x2b, 0xbe, 0x46, 0xa3, 0xb0, 0x63, 0x2c,
+	0xec, 0x9a, 0x1f, 0xff, 0x23, 0x82, 0x9b, 0x8f, 0x04, 0xa3, 0x8a, 0xf5, 0x95, 0x60, 0x74, 0x4c,
+	0xd8, 0xbb, 0x29, 0x93, 0x0a, 0x7b, 0x50, 0x92, 0xd3, 0xc1, 0x5b, 0x16, 0x28, 0x0f, 0xb5, 0x50,
+	0xbb, 0x4c, 0x12, 0x17, 0x63, 0x28, 0x4c, 0xe8, 0x98, 0x79, 0x8e, 0x09, 0x1b, 0x1b, 0xdf, 0x81,
+	0xc5, 0x80, 0x4f, 0xe4, 0x74, 0xcc, 0xc4, 0x13, 0xc1, 0xa7, 0x91, 0x97, 0x37, 0xc9, 0x6c, 0x10,
+	0xdf, 0x83, 0x1b, 0x82, 0x45, 0x67, 0x61, 0x40, 0x55, 0xc8, 0x27, 0xfb, 0x34, 0x50, 0x5c, 0x78,
+	0x85, 0x16, 0x6a, 0xbb, 0xe4, 0xcf, 0x84, 0xbf, 0x0c, 0xf5, 0x2c, 0x31, 0x19, 0xf1, 0x89, 0x64,
+	0xfe, 0x6b, 0xa8, 0xf5, 0xa7, 0x03, 0x19, 0x88, 0x70, 0xc0, 0xfe, 0x8f, 0xed, 0x32, 0x14, 0xf9,
+	0xf1, 0xb1, 0x64, 0xca, 0xd0, 0xcc, 0x93, 0xd8, 0xf3, 0xbb, 0x50, 0xdf, 0x67, 0x2a, 0x38, 0x3d,
+	0x64, 0x8a, 0x0e, 0xa9, 0xa2, 0x09, 0xfa, 0x3a, 0x94, 0xa4, 0xe1, 0x20, 0x3d, 0xd4, 0xca, 0xb7,
+	0xaf, 0x6d, 0xdc, 0xb2, 0x1a, 0x76, 0x2c, 0xb3, 0xc7, 0x4c, 0x93, 0x89, 0x14, 0x17, 0x24, 0xa9,
+	0xf3, 0x25, 0x2c, 0x5d, 0x81, 0xb2, 0xec, 0xf1, 0x5d, 0x28, 0x0d, 0x04, 0x1f, 0x31, 0x91, 0x60,
+	0x2d, 0xc6, 0x58, 0xbb, 0x26, 0x4a, 0x92, 0x2c, 0x5e, 0x87, 0x85, 0x71, 0xfc, 0xd8, 0x73, 0x4c,
+	0xe5, 0x52, 0xe6, 0xab, 0x33, 0xe4, 0x59, 0x99, 0xbf, 0x0d, 0x45, 0x8b, 0x82, 0xab, 0xe0, 0x84,
+	0xc3, 0x58, 0x0a, 0x27, 0x1c, 0x6a, 0x15, 0x4e, 0xb9, 0x54, 0x89, 0x0a, 0xda, 0xd6, 0xb1, 0x88,
+	0x0b, 0xab, 0x81, 0x4b, 0x8c, 0xed, 0x6f, 0x43, 0xed, 0x6a, 0x4f, 0xff, 0xa6, 0xad, 0xff, 0x03,
+	0x41, 0x35, 0x4b, 0x10, 0xaf, 0x41, 0xd1, 0xca, 0x62, 0xde, 0xff, 0x45, 0xbd, 0xb8, 0x0c, 0xaf,
+	0x83, 0xcb, 0x84, 0xe0, 0xc2, 0x00, 0x57, 0x37, 0x56, 0xe6, 0xf6, 0xdd, 0xd9, 0xd3, 0x25, 0xc4,
+	0x56, 0xea, 0x91, 0x9e, 0x31, 0x3a, 0x64, 0x22, 0xde, 0xbc, 0xd8, 0xc3, 0x0d, 0x58, 0x88, 0x37,
+	0x4b, 0x7a, 0x85, 0x56, 0xbe, 0x5d, 0x26, 0x33, 0x1f, 0xd7, 0x20, 0x1f, 0x4a, 0xe1, 0xb9, 0x26,
+	0xac, 0x4d, 0xff, 0x36, 0xb8, 0x06, 0x15, 0x17, 0xc1, 0x39, 0x3a, 0xa8, 0xe5, 0x30, 0x86, 0xea,
+	0xcb, 0xde, 0x41, 0xef, 0xe8, 0x55, 0xef, 0x4d, 0xff, 0x05, 0xd9, 0xdb, 0x39, 0xac, 0x21, 0xff,
+	0x8b, 0x03, 0xa5, 0x43, 0x26, 0x25, 0x3d, 0x49, 0x6f, 0x12, 0x4a, 0x6f, 0x92, 0x86, 0x1e, 0xb1,
+	0x73, 0xc3, 0xbf, 0x42, 0xb4, 0x89, 0xeb, 0xe0, 0xbe, 0xa7, 0x67, 0x53, 0x66, 0xf8, 0x55, 0x88,
+	0x75, 0xf0, 0x2a, 0x94, 0x55, 0x38, 0x66, 0x52, 0xd1, 0x71, 0x64, 0xfe, 0x09, 0x79, 0x72, 0x19,
+	0x48, 0x2b, 0xef, 0x66, 0x95, 0xaf, 0x83, 0xab, 0xdb, 0x38, 0xf7, 0x8a, 0x26, 0x6e, 0x1d, 0xfc,
+	0x10, 0x4a, 0xa7, 0xa6, 0x6d, 0xe9, 0x95, 0xcc, 0xc6, 0x24, 0xca, 0xc5, 0x74, 0x3b, 0x4f, 0x6d,
+	0x76, 0x6f, 0xa2, 0xc4, 0x39, 0x49, 0x6a, 0xb5, 0x46, 0x34, 0x18, 0x75, 0x27, 0x03, 0xfe, 0xc1,
+	0x5b, 0x30, 0x78, 0x33, 0xbf, 0xb1, 0x05, 0x95, 0xf4, 0xa3, 0xa4, 0x31, 0xbb, 0x08, 0xd9, 0xc6,
+	0x9c, 0x54, 0x63, 0x5b, 0xce, 0x26, 0xf2, 0x3f, 0x23, 0xc8, 0xef, 0x04, 0x23, 0x7d, 0x1c, 0xec,
+	0x60, 0xfb, 0x99, 0x35, 0xca, 0x06, 0x71, 0x13, 0xc0, 0x06, 0x7a, 0x97, 0x2b, 0x95, 0x8a, 0xe8,
+	0xfc, 0x58, 0x9e, 0x24, 0x10, 0x76, 0xca, 0xa9, 0x48, 0x6a, 0x14, 0x85, 0xcc, 0x28, 0xd2, 0xdd,
+	0xb9, 0xd9, 0xee, 0x36, 0xbe, 0x6b, 0x86, 0xcf, 0xbb, 0xb8, 0x0b, 0x95, 0xf4, 0xa9, 0xc1, 0x8d,
+	0x58, 0xb7, 0x39, 0x87, 0xb1, 0xb1, 0x32, 0x37, 0x17, 0xdf, 0xa6, 0x1c, 0xde, 0x84, 0xf2, 0xec,
+	0x3a, 0xe1, 0xd9, 0xa6, 0x5f, 0xb9, 0x57, 0x8d, 0x6a, 0x76, 0x30, 0x7e, 0xee, 0x3e, 0xc2, 0xcf,
+	0x60, 0x31, 0x73, 0x32, 0x70, 0xf2, 0xa5, 0x79, 0x37, 0xa9, 0xb1, 0x3a, 0x3f, 0x99, 0xf0, 0xd8,
+	0xad, 0x7d, 0xbd, 0x68, 0xa2, 0x6f, 0x17, 0x4d, 0xf4, 0xf3, 0xa2, 0x89, 0x3e, 0xfd, 0x6a, 0xe6,
+	0x06, 0x45, 0xf3, 0xe0, 0xc1, 0xef, 0x00, 0x00, 0x00, 0xff, 0xff, 0x7f, 0xac, 0xbb, 0x20, 0x0a,
+	0x06, 0x00, 0x00,
 }
