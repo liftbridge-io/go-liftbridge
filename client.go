@@ -88,12 +88,16 @@ func Connect(addrs ...string) (Client, error) {
 	for _, addr := range addrs {
 		addrMap[addr] = struct{}{}
 	}
-	return &client{
+	c := &client{
 		conn:      conn,
 		apiClient: proto.NewAPIClient(conn),
 		pools:     make(map[string]*connPool),
 		addrs:     addrMap,
-	}, nil
+	}
+	if err := c.updateMetadata(); err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
 func (c *client) Close() error {
@@ -120,9 +124,7 @@ func (c *client) CreateStream(ctx context.Context, subject, name string, replica
 }
 
 func (c *client) Subscribe(ctx context.Context, subject, name string, offset int64, handler Handler) error {
-	if err := c.updateMetadata(); err != nil {
-		return err
-	}
+	// TODO: make this more robust.
 	pool, addr, err := c.getPoolAndAddr(subject, name)
 	if err != nil {
 		return err
@@ -141,6 +143,14 @@ func (c *client) Subscribe(ctx context.Context, subject, name string, offset int
 	)
 	stream, err := client.Subscribe(ctx, req)
 	if err != nil {
+		return err
+	}
+
+	// The server will either send an empty message, indicating the
+	// subscription was successfully created, or an error.
+	_, err = stream.Recv()
+	if err != nil {
+		// TODO: add resiliency for server not leader error.
 		return err
 	}
 
