@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand"
 	"sync"
+	"time"
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -123,34 +124,54 @@ func (c *client) CreateStream(ctx context.Context, subject, name string, replica
 	})
 }
 
-func (c *client) Subscribe(ctx context.Context, subject, name string, offset int64, handler Handler) error {
-	// TODO: make this more robust.
-	pool, addr, err := c.getPoolAndAddr(subject, name)
-	if err != nil {
-		return err
-	}
-	conn, err := pool.get(c.connFactory(addr))
-	if err != nil {
-		return err
-	}
+func (c *client) Subscribe(ctx context.Context, subject, name string, offset int64, handler Handler) (err error) {
 	var (
-		client = proto.NewAPIClient(conn)
-		req    = &proto.SubscribeRequest{
-			Subject: subject,
-			Name:    name,
-			Offset:  offset,
-		}
+		pool   *connPool
+		addr   string
+		conn   *grpc.ClientConn
+		stream proto.API_SubscribeClient
 	)
-	stream, err := client.Subscribe(ctx, req)
-	if err != nil {
-		return err
+	for i := 0; i < 5; i++ {
+		pool, addr, err = c.getPoolAndAddr(subject, name)
+		if err != nil {
+			c.updateMetadata()
+			continue
+		}
+		conn, err = pool.get(c.connFactory(addr))
+		if err != nil {
+			c.updateMetadata()
+			continue
+		}
+		var (
+			client = proto.NewAPIClient(conn)
+			req    = &proto.SubscribeRequest{
+				Subject: subject,
+				Name:    name,
+				Offset:  offset,
+			}
+		)
+		stream, err = client.Subscribe(ctx, req)
+		if err != nil {
+			return err
+		}
+
+		// The server will either send an empty message, indicating the
+		// subscription was successfully created, or an error.
+		_, err = stream.Recv()
+		if status.Code(err) == codes.FailedPrecondition {
+			// This indicates the server was not the stream leader. Refresh
+			// metadata and retry after waiting a bit.
+			time.Sleep(time.Duration(10+i*25) * time.Millisecond)
+			c.updateMetadata()
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		break
 	}
 
-	// The server will either send an empty message, indicating the
-	// subscription was successfully created, or an error.
-	_, err = stream.Recv()
-	if err != nil {
-		// TODO: add resiliency for server not leader error.
+	if stream == nil {
 		return err
 	}
 
