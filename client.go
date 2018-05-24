@@ -20,6 +20,8 @@ import (
 const maxConnsPerBroker = 2
 
 var (
+	ErrStreamExists = errors.New("stream already exists")
+
 	envelopeCookie    = []byte("jetb")
 	envelopeCookieLen = len(envelopeCookie)
 )
@@ -118,10 +120,14 @@ func (c *client) CreateStream(ctx context.Context, subject, name string, replica
 		Name:              name,
 		ReplicationFactor: replicationFactor,
 	}
-	return c.doResilientRPC(func(client proto.APIClient) error {
+	err := c.doResilientRPC(func(client proto.APIClient) error {
 		_, err := client.CreateStream(ctx, req)
 		return err
 	})
+	if status.Code(err) == codes.AlreadyExists {
+		return ErrStreamExists
+	}
+	return err
 }
 
 func (c *client) Subscribe(ctx context.Context, subject, name string, offset int64, handler Handler) (err error) {
