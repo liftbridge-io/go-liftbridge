@@ -21,6 +21,7 @@ const maxConnsPerBroker = 2
 
 var (
 	ErrStreamExists = errors.New("stream already exists")
+	ErrNoSuchStream = errors.New("stream does not exist")
 
 	envelopeCookie    = []byte("jetb")
 	envelopeCookieLen = len(envelopeCookie)
@@ -172,6 +173,9 @@ func (c *client) Subscribe(ctx context.Context, subject, name string, offset int
 			continue
 		}
 		if err != nil {
+			if status.Code(err) == codes.NotFound {
+				err = ErrNoSuchStream
+			}
 			return err
 		}
 		break
