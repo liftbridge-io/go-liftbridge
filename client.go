@@ -23,7 +23,7 @@ var (
 	ErrStreamExists = errors.New("stream already exists")
 	ErrNoSuchStream = errors.New("stream does not exist")
 
-	envelopeCookie    = []byte("jetb")
+	envelopeCookie    = []byte("LIFT")
 	envelopeCookieLen = len(envelopeCookie)
 )
 
