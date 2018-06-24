@@ -159,6 +159,11 @@ func (c *client) Subscribe(ctx context.Context, subject, name string, offset int
 		)
 		stream, err = client.Subscribe(ctx, req)
 		if err != nil {
+			if status.Code(err) == codes.Unavailable {
+				time.Sleep(25 * time.Millisecond)
+				c.updateMetadata()
+				continue
+			}
 			return err
 		}
 
