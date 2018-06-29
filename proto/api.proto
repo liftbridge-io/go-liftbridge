@@ -4,10 +4,10 @@ package proto;
 
 // CreateStreamRequest is sent to create a new stream.
 message CreateStreamRequest {
-    string subject              = 1; // Stream NATS subject
-    string name                 = 2; // Stream name (unique per subject)
-    string consumerGroup        = 3; // Partitions NATS subject amongst group members
-    int32  replicationFactor    = 4; // Number of stream replicas
+    string subject           = 1; // Stream NATS subject
+    string name              = 2; // Stream name (unique per subject)
+    string group             = 3; // Partitions NATS subject amongst group members
+    int32  replicationFactor = 4; // Number of stream replicas
 }
 
 // CreateStreamResponse is sent by server after creating a stream.

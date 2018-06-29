@@ -12,7 +12,12 @@ func main() {
 		panic(err)
 	}
 	defer client.Close()
-	if err := client.CreateStream(context.Background(), "foo", "foo-stream", 3); err != nil {
+	stream := liftbridge.StreamInfo{
+		Subject:           "foo",
+		Name:              "foo-stream",
+		ReplicationFactor: 1,
+	}
+	if err := client.CreateStream(context.Background(), stream); err != nil {
 		panic(err)
 	}
 	println("created stream foo-stream")

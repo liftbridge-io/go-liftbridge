@@ -29,9 +29,16 @@ var (
 
 type Handler func(msg *proto.Message, err error)
 
+type StreamInfo struct {
+	Subject           string
+	Name              string
+	Group             string
+	ReplicationFactor int32
+}
+
 type Client interface {
 	Close() error
-	CreateStream(ctx context.Context, subject, name string, replicationFactor int32) error
+	CreateStream(ctx context.Context, stream StreamInfo) error
 	Subscribe(ctx context.Context, subject, name string, offset int64, handler Handler) error
 }
 
@@ -115,11 +122,12 @@ func (c *client) Close() error {
 	return c.conn.Close()
 }
 
-func (c *client) CreateStream(ctx context.Context, subject, name string, replicationFactor int32) error {
+func (c *client) CreateStream(ctx context.Context, info StreamInfo) error {
 	req := &proto.CreateStreamRequest{
-		Subject:           subject,
-		Name:              name,
-		ReplicationFactor: replicationFactor,
+		Subject:           info.Subject,
+		Name:              info.Name,
+		ReplicationFactor: info.ReplicationFactor,
+		Group:             info.Group,
 	}
 	err := c.doResilientRPC(func(client proto.APIClient) error {
 		_, err := client.CreateStream(ctx, req)
