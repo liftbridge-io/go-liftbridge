@@ -1,4 +1,4 @@
-//go:generate protoc --gofast_out=plugins=grpc:. ./proto/api.proto
+//go:generate protoc --gofast_out=plugins=grpc:. ./liftbridge-grpc/api.proto
 
 package liftbridge
 
@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/tylertreat/go-liftbridge/proto"
+	"github.com/tylertreat/go-liftbridge/liftbridge-grpc"
 )
 
 const maxConnsPerBroker = 2
