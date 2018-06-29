@@ -17,7 +17,11 @@ import (
 	"github.com/tylertreat/go-liftbridge/liftbridge-grpc"
 )
 
-const maxConnsPerBroker = 2
+// TODO: make these configurable.
+const (
+	maxConnsPerBroker = 2
+	keepAliveTime     = 30 * time.Second
+)
 
 var (
 	ErrStreamExists = errors.New("stream already exists")
@@ -269,7 +273,7 @@ func (c *client) getPoolAndAddr(subject, name string) (*connPool, string, error)
 	}
 	pool, ok := c.pools[addr]
 	if !ok {
-		pool = newConnPool(maxConnsPerBroker)
+		pool = newConnPool(maxConnsPerBroker, keepAliveTime)
 		c.pools[addr] = pool
 	}
 	return pool, addr, nil
