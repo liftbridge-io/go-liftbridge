@@ -37,7 +37,7 @@ func main() {
 	println("publishing")
 	for i := 0; i < count; i++ {
 		m := liftbridge.NewEnvelope([]byte("test"), []byte(strconv.Itoa(i)), ackInbox)
-		if err := conn.Publish("foo", m); err != nil {
+		if err := conn.Publish("bar", m); err != nil {
 			panic(err)
 		}
 	}
