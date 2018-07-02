@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	natsdTest "github.com/nats-io/gnatsd/test"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"github.com/tylertreat/liftbridge/server"
@@ -58,6 +59,10 @@ func runServerWithConfig(t *testing.T, config *server.Config) *server.Server {
 
 func TestConnPoolMaxConns(t *testing.T) {
 	defer cleanupStorage(t)
+
+	// Use a central NATS server.
+	ns := natsdTest.RunDefaultServer()
+	defer ns.Shutdown()
 
 	config := getTestConfig("a", true, 5050)
 	s := runServerWithConfig(t, config)
@@ -111,6 +116,10 @@ func TestConnPoolMaxConns(t *testing.T) {
 
 func TestConnPoolReuse(t *testing.T) {
 	defer cleanupStorage(t)
+
+	// Use a central NATS server.
+	ns := natsdTest.RunDefaultServer()
+	defer ns.Shutdown()
 
 	config := getTestConfig("a", true, 5050)
 	s := runServerWithConfig(t, config)
