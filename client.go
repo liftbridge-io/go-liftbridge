@@ -25,28 +25,62 @@ const (
 )
 
 var (
+	// ErrStreamExists is returned by CreateStream if the specified stream
+	// already exists in the Liftbridge cluster.
 	ErrStreamExists = errors.New("stream already exists")
+
+	// ErrNoSuchStream is returned by Subscribe if the specified stream does
+	// not exist in the Liftbridge cluster.
 	ErrNoSuchStream = errors.New("stream does not exist")
 
 	envelopeCookie    = []byte("LIFT")
 	envelopeCookieLen = len(envelopeCookie)
 )
 
+// Handler is the callback invoked by Subscribe when a message is received on
+// the specified stream. If err is not nil, the subscription will be terminated
+// and no more messages will be received.
 type Handler func(msg *proto.Message, err error)
 
+// StreamInfo is used to describe a stream to create.
 type StreamInfo struct {
-	Subject           string
-	Name              string
-	Group             string
+	// Subject is the NATS subject the stream is attached to (required).
+	Subject string
+
+	// Name is the stream identifier, unique per subject (required).
+	Name string
+
+	// Group is the name of a load-balance group (optional). When there are
+	// multiple streams in the same group, the messages will be balanced among
+	// them.
+	Group string
+
+	// ReplicationFactor controls the number of servers to replicate a stream
+	// to (optional). E.g. a value of 1 would mean only 1 server would have the
+	// data, and a value of 3 would be 3 servers would have it. If this is not
+	// set, it defaults to 1.
 	ReplicationFactor int32
 }
 
+// Client is the main API used to communicate with a Liftbridge cluster. Call
+// Connect to get a Client instance.
 type Client interface {
+	// Close the client connection.
 	Close() error
+
+	// CreateStream creates a new stream attached to a NATS subject. It returns
+	// ErrStreamExists if a stream with the given subject and name already
+	// exists.
 	CreateStream(ctx context.Context, stream StreamInfo) error
+
+	// Subscribe creates an ephemeral subscription for the given stream. It
+	// begins receiving messages starting at the given offset. Use a cancelable
+	// Context to close a subscription.
 	Subscribe(ctx context.Context, subject, name string, offset int64, handler Handler) error
 }
 
+// NewEnvelope returns a serialized message envelope for the given key-value
+// pair. Message keys are optional, so you may pass in nil for the key.
 func NewEnvelope(key, value []byte, ackInbox string) []byte {
 	msg := &proto.Message{
 		Key:      key,
@@ -63,6 +97,8 @@ func NewEnvelope(key, value []byte, ackInbox string) []byte {
 	return buf
 }
 
+// UnmarshalAck deserializes an Ack from the given byte slice. It returns an
+// error if the given data is not actually an Ack.
 func UnmarshalAck(data []byte) (*proto.Ack, error) {
 	var (
 		ack = &proto.Ack{}
@@ -71,6 +107,9 @@ func UnmarshalAck(data []byte) (*proto.Ack, error) {
 	return ack, err
 }
 
+// UnmarshalEnvelope deserializes a Message envelope from the given byte slice.
+// It returns a bool indicating if the given data was actually a Message
+// envelope or not.
 func UnmarshalEnvelope(data []byte) (*proto.Message, bool) {
 	if len(data) <= envelopeCookieLen {
 		return nil, false
@@ -88,6 +127,9 @@ func UnmarshalEnvelope(data []byte) (*proto.Message, bool) {
 	return msg, true
 }
 
+// client implements the Client interface. It maintains a pool of connections
+// for each broker in the cluster, limiting the number of connections and
+// closing them when they go unused for a prolonged period of time.
 type client struct {
 	mu          sync.RWMutex
 	apiClient   proto.APIClient
@@ -98,6 +140,12 @@ type client struct {
 	addrs       map[string]struct{}
 }
 
+// Connect creates a Client connection for the given Liftbridge cluster.
+// Multiple addresses can be provided. Connect will use whichever it connects
+// successfully to first in random order. The Client will use the pool of
+// addresses for failover purposes. Note that only one seed address needs to be
+// provided as the Client will discover the other brokers when fetching
+// metadata for the cluster.
 func Connect(addrs ...string) (Client, error) {
 	if len(addrs) == 0 {
 		return nil, errors.New("no addresses provided")
@@ -133,6 +181,7 @@ func Connect(addrs ...string) (Client, error) {
 	return c, nil
 }
 
+// Close the client connection.
 func (c *client) Close() error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -144,6 +193,8 @@ func (c *client) Close() error {
 	return c.conn.Close()
 }
 
+// CreateStream creates a new stream attached to a NATS subject. It returns
+// ErrStreamExists if a stream with the given subject and name already exists.
 func (c *client) CreateStream(ctx context.Context, info StreamInfo) error {
 	req := &proto.CreateStreamRequest{
 		Subject:           info.Subject,
@@ -161,6 +212,9 @@ func (c *client) CreateStream(ctx context.Context, info StreamInfo) error {
 	return err
 }
 
+// Subscribe creates an ephemeral subscription for the given stream. It begins
+// receiving messages starting at the given offset. Use a cancelable Context to
+// close a subscription.
 func (c *client) Subscribe(ctx context.Context, subject, name string, offset int64, handler Handler) (err error) {
 	var (
 		pool   *connPool
@@ -239,12 +293,17 @@ func (c *client) Subscribe(ctx context.Context, subject, name string, offset int
 	return nil
 }
 
+// connFactory returns a pool connFactory for the given address. The
+// connFactory dials the address to create a gRPC ClientConn.
 func (c *client) connFactory(addr string) connFactory {
 	return func() (*grpc.ClientConn, error) {
 		return grpc.Dial(addr, grpc.WithInsecure())
 	}
 }
 
+// updateMetadata fetches the latest cluster metadata, including stream and
+// broker information. This maintains a map from broker ID to address and a map
+// from stream to broker address.
 func (c *client) updateMetadata() error {
 	var resp *proto.FetchMetadataResponse
 	if err := c.doResilientRPC(func(client proto.APIClient) (err error) {
@@ -278,6 +337,7 @@ func (c *client) updateMetadata() error {
 	return nil
 }
 
+// getPoolAndAddr returns the connPool and broker address for the given stream.
 func (c *client) getPoolAndAddr(subject, name string) (*connPool, string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -297,6 +357,8 @@ func (c *client) getPoolAndAddr(subject, name string) (*connPool, string, error)
 	return pool, addr, nil
 }
 
+// doResilientRPC executes the given RPC and performs retries if it fails due
+// to the broker being unavailable, cycling through the known broker list.
 func (c *client) doResilientRPC(rpc func(client proto.APIClient) error) (err error) {
 	c.mu.RLock()
 	client := c.apiClient
@@ -322,6 +384,8 @@ func (c *client) doResilientRPC(rpc func(client proto.APIClient) error) (err err
 	return
 }
 
+// dialBroker dials each broker in the cluster, in random order, returning a
+// gRPC ClientConn to the first one that is successful.
 func (c *client) dialBroker() (*grpc.ClientConn, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
