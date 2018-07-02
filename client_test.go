@@ -24,6 +24,56 @@ func assertMsg(t *testing.T, expected *message, msg *proto.Message) {
 	require.Equal(t, expected.Value, msg.Value)
 }
 
+func TestUnmarshalAck(t *testing.T) {
+	ack := &proto.Ack{
+		StreamSubject: "foo",
+		StreamName:    "bar",
+		MsgSubject:    "foo",
+		Offset:        1,
+		AckInbox:      "acks",
+	}
+	data, err := ack.Marshal()
+	require.NoError(t, err)
+	actual, err := UnmarshalAck(data)
+	require.NoError(t, err)
+	require.Equal(t, ack, actual)
+}
+
+func TestUnmarshalAckError(t *testing.T) {
+	_, err := UnmarshalAck([]byte("blah"))
+	require.Error(t, err)
+}
+
+func TestNewEnvelopeUnmarshal(t *testing.T) {
+	var (
+		key      = []byte("foo")
+		value    = []byte("bar")
+		ackInbox = "acks"
+	)
+	env := NewEnvelope(key, value, ackInbox)
+	actual, ok := UnmarshalEnvelope(env)
+	require.True(t, ok)
+	require.Equal(t, key, actual.Key)
+	require.Equal(t, value, actual.Value)
+	require.Equal(t, ackInbox, actual.AckInbox)
+}
+
+func TestUnmarshalEnvelopeError(t *testing.T) {
+	_, ok := UnmarshalEnvelope(nil)
+	require.False(t, ok)
+
+	_, ok = UnmarshalEnvelope([]byte("blahh"))
+	require.False(t, ok)
+
+	_, ok = UnmarshalEnvelope([]byte("LIFTblah"))
+	require.False(t, ok)
+}
+
+func TestConnectNoAddrs(t *testing.T) {
+	_, err := Connect()
+	require.Error(t, err)
+}
+
 func TestClientSubscribe(t *testing.T) {
 	defer cleanupStorage(t)
 

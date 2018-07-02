@@ -3,6 +3,7 @@
 package liftbridge
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -68,6 +69,23 @@ func UnmarshalAck(data []byte) (*proto.Ack, error) {
 		err = ack.Unmarshal(data)
 	)
 	return ack, err
+}
+
+func UnmarshalEnvelope(data []byte) (*proto.Message, bool) {
+	if len(data) <= envelopeCookieLen {
+		return nil, false
+	}
+	if !bytes.Equal(data[:envelopeCookieLen], envelopeCookie) {
+		return nil, false
+	}
+	var (
+		msg = &proto.Message{}
+		err = msg.Unmarshal(data[envelopeCookieLen:])
+	)
+	if err != nil {
+		return nil, false
+	}
+	return msg, true
 }
 
 type client struct {
