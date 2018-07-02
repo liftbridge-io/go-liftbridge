@@ -112,6 +112,7 @@ func (m *CreateStreamResponse) String() string            { return proto1.Compac
 func (*CreateStreamResponse) ProtoMessage()               {}
 func (*CreateStreamResponse) Descriptor() ([]byte, []int) { return fileDescriptorApi, []int{1} }
 
+// SubscribeRequest is sent to subscribe to a stream.
 type SubscribeRequest struct {
 	Subject string `protobuf:"bytes,1,opt,name=subject,proto3" json:"subject,omitempty"`
 	Name    string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
@@ -144,6 +145,7 @@ func (m *SubscribeRequest) GetOffset() int64 {
 	return 0
 }
 
+// FetchMetadataRequest is sent to retrieve the latest cluster metadata.
 type FetchMetadataRequest struct {
 	Streams []*StreamDescriptor `protobuf:"bytes,1,rep,name=streams" json:"streams,omitempty"`
 }
@@ -160,6 +162,7 @@ func (m *FetchMetadataRequest) GetStreams() []*StreamDescriptor {
 	return nil
 }
 
+// FetchMetadataResponse contains the cluster metadata requested.
 type FetchMetadataResponse struct {
 	Brokers  []*Broker         `protobuf:"bytes,1,rep,name=brokers" json:"brokers,omitempty"`
 	Metadata []*StreamMetadata `protobuf:"bytes,2,rep,name=metadata" json:"metadata,omitempty"`
@@ -184,6 +187,7 @@ func (m *FetchMetadataResponse) GetMetadata() []*StreamMetadata {
 	return nil
 }
 
+// Broker contains information for a Liftbridge broker.
 type Broker struct {
 	Id   string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	Host string `protobuf:"bytes,2,opt,name=host,proto3" json:"host,omitempty"`
@@ -216,6 +220,7 @@ func (m *Broker) GetPort() int32 {
 	return 0
 }
 
+// StreamDescriptor uniquely describes a stream in a cluster.
 type StreamDescriptor struct {
 	Subject string `protobuf:"bytes,1,opt,name=subject,proto3" json:"subject,omitempty"`
 	Name    string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
@@ -240,6 +245,7 @@ func (m *StreamDescriptor) GetName() string {
 	return ""
 }
 
+// StreamMetadata contains information for a stream.
 type StreamMetadata struct {
 	Stream   *StreamDescriptor    `protobuf:"bytes,1,opt,name=stream" json:"stream,omitempty"`
 	Error    StreamMetadata_Error `protobuf:"varint,2,opt,name=error,proto3,enum=proto.StreamMetadata_Error" json:"error,omitempty"`
@@ -288,6 +294,7 @@ func (m *StreamMetadata) GetIsr() []string {
 	return nil
 }
 
+// Message represents a message from a stream.
 type Message struct {
 	Offset    int64             `protobuf:"varint,1,opt,name=offset,proto3" json:"offset,omitempty"`
 	Key       []byte            `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
@@ -360,6 +367,7 @@ func (m *Message) GetAckInbox() string {
 	return ""
 }
 
+// Ack represents an acknowledgement that a message was committed to a stream.
 type Ack struct {
 	StreamSubject string `protobuf:"bytes,1,opt,name=streamSubject,proto3" json:"streamSubject,omitempty"`
 	StreamName    string `protobuf:"bytes,2,opt,name=streamName,proto3" json:"streamName,omitempty"`
@@ -433,8 +441,17 @@ const _ = grpc.SupportPackageIsVersion4
 // Client API for API service
 
 type APIClient interface {
+	// CreateStream creates a new stream attached to a NATS subject. It returns
+	// an AlreadyExists status code if a stream with the given subject and name
+	// already exists.
 	CreateStream(ctx context.Context, in *CreateStreamRequest, opts ...grpc.CallOption) (*CreateStreamResponse, error)
+	// Subscribe creates an ephemeral subscription for the given stream. It
+	// begins to receive messages starting at the given offset and waits for
+	// new messages when it reaches the end of the stream. Use the request
+	// context to close the subscription.
 	Subscribe(ctx context.Context, in *SubscribeRequest, opts ...grpc.CallOption) (API_SubscribeClient, error)
+	// FetchMetadata retrieves the latest cluster metadata, including stream
+	// broker information.
 	FetchMetadata(ctx context.Context, in *FetchMetadataRequest, opts ...grpc.CallOption) (*FetchMetadataResponse, error)
 }
 
@@ -499,8 +516,17 @@ func (c *aPIClient) FetchMetadata(ctx context.Context, in *FetchMetadataRequest,
 // Server API for API service
 
 type APIServer interface {
+	// CreateStream creates a new stream attached to a NATS subject. It returns
+	// an AlreadyExists status code if a stream with the given subject and name
+	// already exists.
 	CreateStream(context.Context, *CreateStreamRequest) (*CreateStreamResponse, error)
+	// Subscribe creates an ephemeral subscription for the given stream. It
+	// begins to receive messages starting at the given offset and waits for
+	// new messages when it reaches the end of the stream. Use the request
+	// context to close the subscription.
 	Subscribe(*SubscribeRequest, API_SubscribeServer) error
+	// FetchMetadata retrieves the latest cluster metadata, including stream
+	// broker information.
 	FetchMetadata(context.Context, *FetchMetadataRequest) (*FetchMetadataResponse, error)
 }
 

@@ -1,6 +1,7 @@
 package liftbridge
 
 import (
+	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -195,4 +196,102 @@ func TestClientSubscribe(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("Did not receive all expected messages")
 	}
+}
+
+func ExampleConnect() {
+	addr := "localhost:9292"
+	client, err := Connect(addr)
+	if err != nil {
+		panic(err)
+	}
+	defer client.Close()
+}
+
+func ExampleClient_createStream() {
+	// Connect to Liftbridge.
+	addr := "localhost:9292"
+	client, err := Connect(addr)
+	if err != nil {
+		panic(err)
+	}
+	defer client.Close()
+	stream := StreamInfo{
+		Subject:           "foo",
+		Name:              "foo-stream",
+		ReplicationFactor: 1,
+	}
+	if err := client.CreateStream(context.Background(), stream); err != nil {
+		panic(err)
+	}
+}
+
+func ExampleClient_subscribe() {
+	// Connect to Liftbridge.
+	addr := "localhost:9292"
+	client, err := Connect(addr)
+	if err != nil {
+		panic(err)
+	}
+	defer client.Close()
+
+	// Subscribe to stream.
+	ctx := context.Background()
+	if err := client.Subscribe(ctx, "bar", "bar-stream", 0, func(msg *proto.Message, err error) {
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(msg.Offset, string(msg.Value))
+	}); err != nil {
+		panic(err)
+	}
+
+	<-ctx.Done()
+}
+
+func ExampleNewEnvelope() {
+	// Create NATS connection.
+	conn, err := nats.GetDefaultOptions().Connect()
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Flush()
+	defer conn.Close()
+
+	// Publish message.
+	msg := NewEnvelope([]byte("key"), []byte("value"), "")
+	if err := conn.Publish("foo", msg); err != nil {
+		panic(err)
+	}
+}
+
+func ExampleUnmarshalAck() {
+	// Create NATS connection.
+	conn, err := nats.GetDefaultOptions().Connect()
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
+
+	// Setup ack inbox.
+	ackInbox := "acks"
+	acked := make(chan struct{})
+	_, err = conn.Subscribe(ackInbox, func(m *nats.Msg) {
+		ack, err := UnmarshalAck(m.Data)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("ack:", ack.StreamSubject, ack.StreamName, ack.Offset, ack.MsgSubject)
+		close(acked)
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	// Publish message.
+	msg := NewEnvelope([]byte("key"), []byte("value"), ackInbox)
+	if err := conn.Publish("foo", msg); err != nil {
+		panic(err)
+	}
+
+	<-acked
 }

@@ -74,7 +74,9 @@ type Client interface {
 	CreateStream(ctx context.Context, stream StreamInfo) error
 
 	// Subscribe creates an ephemeral subscription for the given stream. It
-	// begins receiving messages starting at the given offset. Use a cancelable
+	// begins receiving messages starting at the given offset and waits for new
+	// messages when it reaches the end of the stream. It returns an
+	// ErrNoSuchStream if the given stream does not exist. Use a cancelable
 	// Context to close a subscription.
 	Subscribe(ctx context.Context, subject, name string, offset int64, handler Handler) error
 }
@@ -213,8 +215,10 @@ func (c *client) CreateStream(ctx context.Context, info StreamInfo) error {
 }
 
 // Subscribe creates an ephemeral subscription for the given stream. It begins
-// receiving messages starting at the given offset. Use a cancelable Context to
-// close a subscription.
+// receiving messages starting at the given offset and waits for new messages
+// when it reaches the end of the stream. It returns an ErrNoSuchStream if the
+// given stream does not exist. Use a cancelable Context to close a
+// subscription.
 func (c *client) Subscribe(ctx context.Context, subject, name string, offset int64, handler Handler) (err error) {
 	var (
 		pool   *connPool

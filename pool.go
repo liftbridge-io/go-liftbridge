@@ -7,8 +7,12 @@ import (
 	"google.golang.org/grpc"
 )
 
+// connFactory creates a gRPC ClientConn.
 type connFactory func() (*grpc.ClientConn, error)
 
+// connPool maintains a pool of gRPC ClientConns. It limits the number of
+// connections based on maxConns and closes unused connections based on
+// keepAliveTime.
 type connPool struct {
 	mu            sync.Mutex
 	conns         []*grpc.ClientConn
@@ -17,6 +21,10 @@ type connPool struct {
 	timers        map[*grpc.ClientConn]*time.Timer
 }
 
+// newConnPool creates a new connPool with the given maxConns and keepAliveTime
+// settings. The maxConn setting caps the number of connections created. The
+// keepAliveTime setting determines how long to wait before closing unused
+// connections.
 func newConnPool(maxConns int, keepAliveTime time.Duration) *connPool {
 	return &connPool{
 		maxConns:      maxConns,
@@ -26,6 +34,8 @@ func newConnPool(maxConns int, keepAliveTime time.Duration) *connPool {
 	}
 }
 
+// get returns a gRPC ClientConn either from the pool, if any, or by using the
+// providing connFactory.
 func (p *connPool) get(factory connFactory) (*grpc.ClientConn, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -45,6 +55,8 @@ func (p *connPool) get(factory connFactory) (*grpc.ClientConn, error) {
 	return c, e
 }
 
+// put returns the given gRPC ClientConn to the pool if there is capacity or
+// closes it if there is not.
 func (p *connPool) put(conn *grpc.ClientConn) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -61,6 +73,8 @@ func (p *connPool) put(conn *grpc.ClientConn) error {
 	return nil
 }
 
+// connExpired is called when the keepAliveTime timer has fired for the given
+// connection. This will close and remove the connection from the pool.
 func (p *connPool) connExpired(conn *grpc.ClientConn) func() {
 	return func() {
 		p.mu.Lock()
@@ -76,6 +90,8 @@ func (p *connPool) connExpired(conn *grpc.ClientConn) func() {
 	}
 }
 
+// close cleans up the connPool by closing all active connections and stopping
+// all timers.
 func (p *connPool) close() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -92,6 +108,7 @@ func (p *connPool) close() error {
 	return nil
 }
 
+// remove returns the slice with the given index removed.
 func remove(conns []*grpc.ClientConn, i int) []*grpc.ClientConn {
 	conns[len(conns)-1], conns[i] = conns[i], conns[len(conns)-1]
 	return conns[:len(conns)-1]
