@@ -31,7 +31,6 @@ func main() {
 			panic(err)
 		}
 	}
-	time.Sleep(time.Second)
 
 	conn, err := nats.DefaultOptions.Connect()
 	if err != nil {
