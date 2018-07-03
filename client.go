@@ -82,11 +82,12 @@ type Client interface {
 	CreateStream(ctx context.Context, stream StreamInfo) error
 
 	// Subscribe creates an ephemeral subscription for the given stream. It
-	// begins receiving messages starting at the given offset and waits for new
-	// messages when it reaches the end of the stream. It returns an
-	// ErrNoSuchStream if the given stream does not exist. Use a cancelable
-	// Context to close a subscription.
-	Subscribe(ctx context.Context, subject, name string, offset int64, handler Handler) error
+	// begins receiving messages starting at the configured position and waits
+	// for new messages when it reaches the end of the stream. The default
+	// start position is the end of the stream. It returns an ErrNoSuchStream
+	// if the given stream does not exist. Use a cancelable Context to close a
+	// subscription.
+	Subscribe(ctx context.Context, subject, name string, handler Handler, opts ...SubscriptionOption) error
 }
 
 // client implements the Client interface. It maintains a pool of connections
@@ -236,13 +237,52 @@ func (c *client) CreateStream(ctx context.Context, info StreamInfo) error {
 	return err
 }
 
+// SubscriptionOptions are used to control a subscription's behavior.
+type SubscriptionOptions struct {
+	// StartPosition controls where to begin consuming from in the stream.
+	StartPosition proto.StartPosition
+
+	// StartOffset sets the stream offset to begin consuming from.
+	StartOffset int64
+}
+
+// SubscriptionOption is a function on the SubscriptionOptions for a
+// subscription. These are used to configure particular subscription options.
+type SubscriptionOption func(*SubscriptionOptions) error
+
+// StartAt sets the desired start position for the stream.
+func StartAt(start proto.StartPosition) SubscriptionOption {
+	return func(o *SubscriptionOptions) error {
+		o.StartPosition = start
+		return nil
+	}
+}
+
+// StartAtOffset sets the desired start offset to begin consuming from in the
+// stream.
+func StartAtOffset(offset int64) SubscriptionOption {
+	return func(o *SubscriptionOptions) error {
+		o.StartPosition = proto.StartPosition_Offset
+		o.StartOffset = offset
+		return nil
+	}
+}
+
 // Subscribe creates an ephemeral subscription for the given stream. It begins
-// receiving messages starting at the given offset and waits for new messages
-// when it reaches the end of the stream. It returns an ErrNoSuchStream if the
-// given stream does not exist. Use a cancelable Context to close a
-// subscription.
-// TODO: change to use options pattern.
-func (c *client) Subscribe(ctx context.Context, subject, name string, offset int64, handler Handler) (err error) {
+// receiving messages starting at the configured position and waits for new
+// messages when it reaches the end of the stream. The default start position
+// is the end of the stream. It returns an ErrNoSuchStream if the given stream
+// does not exist. Use a cancelable Context to close a subscription.
+func (c *client) Subscribe(ctx context.Context, subject, name string, handler Handler,
+	options ...SubscriptionOption) (err error) {
+
+	opts := &SubscriptionOptions{}
+	for _, opt := range options {
+		if err := opt(opts); err != nil {
+			return err
+		}
+	}
+
 	var (
 		pool   *connPool
 		addr   string
@@ -263,9 +303,10 @@ func (c *client) Subscribe(ctx context.Context, subject, name string, offset int
 		var (
 			client = proto.NewAPIClient(conn)
 			req    = &proto.SubscribeRequest{
-				Subject: subject,
-				Name:    name,
-				Offset:  offset,
+				Subject:       subject,
+				Name:          name,
+				StartPosition: opts.StartPosition,
+				StartOffset:   opts.StartOffset,
 			}
 		)
 		stream, err = client.Subscribe(ctx, req)

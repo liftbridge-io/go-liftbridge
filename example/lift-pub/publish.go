@@ -54,7 +54,7 @@ func main() {
 
 func createStream() error {
 	addr := "localhost:9292"
-	client, err := liftbridge.Connect(addr)
+	client, err := liftbridge.Connect([]string{addr})
 	if err != nil {
 		return err
 	}

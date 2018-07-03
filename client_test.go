@@ -144,7 +144,7 @@ func TestClientSubscribe(t *testing.T) {
 	recv := 0
 	ch1 := make(chan struct{})
 	ch2 := make(chan struct{})
-	client.Subscribe(ctx, "foo", "bar", 0, func(msg *proto.Message, err error) {
+	client.Subscribe(ctx, "foo", "bar", func(msg *proto.Message, err error) {
 		if recv == 2*count && err != nil {
 			return
 		}
@@ -238,7 +238,7 @@ func ExampleClient_subscribe() {
 
 	// Subscribe to stream.
 	ctx := context.Background()
-	if err := client.Subscribe(ctx, "bar", "bar-stream", 0, func(msg *proto.Message, err error) {
+	if err := client.Subscribe(ctx, "bar", "bar-stream", func(msg *proto.Message, err error) {
 		if err != nil {
 			panic(err)
 		}

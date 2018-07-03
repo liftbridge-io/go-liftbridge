@@ -16,7 +16,7 @@ const (
 
 func main() {
 	addrs := []string{"localhost:9292"}
-	client, err := liftbridge.Connect(addrs...)
+	client, err := liftbridge.Connect(addrs)
 	if err != nil {
 		panic(err)
 	}
