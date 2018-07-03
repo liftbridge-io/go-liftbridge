@@ -57,7 +57,7 @@ func main() {
 
 	start := time.Now()
 	for i := 0; i < numMsgs; i++ {
-		m := liftbridge.NewMessage(nil, msg, ackInbox)
+		m := liftbridge.NewMessage(msg, liftbridge.MessageOptions{AckInbox: ackInbox})
 		if err := conn.Publish("bar", m); err != nil {
 			panic(err)
 		}

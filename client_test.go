@@ -51,7 +51,7 @@ func TestNewMessageUnmarshal(t *testing.T) {
 		value    = []byte("bar")
 		ackInbox = "acks"
 	)
-	msg := NewMessage(key, value, ackInbox)
+	msg := NewMessage(value, MessageOptions{Key: key, AckInbox: ackInbox})
 	actual, ok := UnmarshalMessage(msg)
 	require.True(t, ok)
 	require.Equal(t, key, actual.Key)
@@ -126,7 +126,8 @@ func TestClientSubscribe(t *testing.T) {
 	}
 
 	for i := 0; i < count; i++ {
-		err = nc.Publish("foo", NewEnvelope(expected[i].Key, expected[i].Value, ackInbox))
+		err = nc.Publish("foo", NewMessage(expected[i].Value,
+			MessageOptions{Key: expected[i].Key, AckInbox: ackInbox}))
 		require.NoError(t, err)
 	}
 
@@ -179,7 +180,8 @@ func TestClientSubscribe(t *testing.T) {
 	}
 
 	for i := 0; i < count; i++ {
-		err = nc.Publish("foo", NewEnvelope(expected[i+count].Key, expected[i+count].Value, ackInbox))
+		err = nc.Publish("foo", NewMessage(expected[i+count].Value,
+			MessageOptions{Key: expected[i+count].Key, AckInbox: ackInbox}))
 		require.NoError(t, err)
 	}
 
@@ -248,7 +250,7 @@ func ExampleClient_subscribe() {
 	<-ctx.Done()
 }
 
-func ExampleNewEnvelope() {
+func ExampleNewMessage() {
 	// Create NATS connection.
 	conn, err := nats.GetDefaultOptions().Connect()
 	if err != nil {
@@ -258,7 +260,7 @@ func ExampleNewEnvelope() {
 	defer conn.Close()
 
 	// Publish message.
-	msg := NewEnvelope([]byte("key"), []byte("value"), "")
+	msg := NewMessage([]byte("value"), MessageOptions{Key: []byte("key")})
 	if err := conn.Publish("foo", msg); err != nil {
 		panic(err)
 	}
@@ -288,7 +290,7 @@ func ExampleUnmarshalAck() {
 	}
 
 	// Publish message.
-	msg := NewEnvelope([]byte("key"), []byte("value"), ackInbox)
+	msg := NewMessage([]byte("value"), MessageOptions{Key: []byte("key"), AckInbox: ackInbox})
 	if err := conn.Publish("foo", msg); err != nil {
 		panic(err)
 	}
