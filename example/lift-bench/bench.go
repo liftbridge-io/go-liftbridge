@@ -15,7 +15,7 @@ const (
 )
 
 func main() {
-	addrs := []string{"localhost:9292", "localhost:9293", "localhost:9294"}
+	addrs := []string{"localhost:9292"}
 	client, err := liftbridge.Connect(addrs...)
 	if err != nil {
 		panic(err)
@@ -24,7 +24,7 @@ func main() {
 	stream := liftbridge.StreamInfo{
 		Subject:           "bar",
 		Name:              "bar-stream",
-		ReplicationFactor: 3,
+		ReplicationFactor: 1,
 	}
 	if err := client.CreateStream(context.Background(), stream); err != nil {
 		if err != liftbridge.ErrStreamExists {
@@ -57,7 +57,7 @@ func main() {
 
 	start := time.Now()
 	for i := 0; i < numMsgs; i++ {
-		m := liftbridge.NewEnvelope(nil, msg, ackInbox)
+		m := liftbridge.NewMessage(nil, msg, ackInbox)
 		if err := conn.Publish("bar", m); err != nil {
 			panic(err)
 		}

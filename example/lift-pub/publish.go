@@ -41,7 +41,7 @@ func main() {
 	wg.Add(count)
 	fmt.Println("publishing")
 	for i := 0; i < count; i++ {
-		m := liftbridge.NewEnvelope([]byte("test"), []byte(strconv.Itoa(i)), ackInbox)
+		m := liftbridge.NewMessage([]byte("test"), []byte(strconv.Itoa(i)), ackInbox)
 		if err := conn.Publish("foo", m); err != nil {
 			panic(err)
 		}
