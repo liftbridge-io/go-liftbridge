@@ -93,6 +93,7 @@ type Client interface {
 
 // NewEnvelope returns a serialized message envelope for the given key-value
 // pair. Message keys are optional, so you may pass in nil for the key.
+// TODO: change to use options pattern.
 func NewEnvelope(key, value []byte, ackInbox string) []byte {
 	msg := &proto.Message{
 		Key:      key,
