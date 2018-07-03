@@ -71,7 +71,7 @@ func TestUnmarshalMessageError(t *testing.T) {
 }
 
 func TestConnectNoAddrs(t *testing.T) {
-	_, err := Connect()
+	_, err := Connect(nil)
 	require.Error(t, err)
 }
 
@@ -86,7 +86,7 @@ func TestClientSubscribe(t *testing.T) {
 	s := runServerWithConfig(t, config)
 	defer s.Stop()
 
-	client, err := Connect("localhost:5050")
+	client, err := Connect([]string{"localhost:5050"})
 	require.NoError(t, err)
 	defer client.Close()
 	time.Sleep(2 * time.Second)
@@ -202,7 +202,7 @@ func TestClientSubscribe(t *testing.T) {
 
 func ExampleConnect() {
 	addr := "localhost:9292"
-	client, err := Connect(addr)
+	client, err := Connect([]string{addr})
 	if err != nil {
 		panic(err)
 	}
@@ -212,7 +212,7 @@ func ExampleConnect() {
 func ExampleClient_createStream() {
 	// Connect to Liftbridge.
 	addr := "localhost:9292"
-	client, err := Connect(addr)
+	client, err := Connect([]string{addr})
 	if err != nil {
 		panic(err)
 	}
@@ -230,7 +230,7 @@ func ExampleClient_createStream() {
 func ExampleClient_subscribe() {
 	// Connect to Liftbridge.
 	addr := "localhost:9292"
-	client, err := Connect(addr)
+	client, err := Connect([]string{addr})
 	if err != nil {
 		panic(err)
 	}
