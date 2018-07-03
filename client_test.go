@@ -45,28 +45,28 @@ func TestUnmarshalAckError(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestNewEnvelopeUnmarshal(t *testing.T) {
+func TestNewMessageUnmarshal(t *testing.T) {
 	var (
 		key      = []byte("foo")
 		value    = []byte("bar")
 		ackInbox = "acks"
 	)
-	env := NewEnvelope(key, value, ackInbox)
-	actual, ok := UnmarshalEnvelope(env)
+	msg := NewMessage(key, value, ackInbox)
+	actual, ok := UnmarshalMessage(msg)
 	require.True(t, ok)
 	require.Equal(t, key, actual.Key)
 	require.Equal(t, value, actual.Value)
 	require.Equal(t, ackInbox, actual.AckInbox)
 }
 
-func TestUnmarshalEnvelopeError(t *testing.T) {
-	_, ok := UnmarshalEnvelope(nil)
+func TestUnmarshalMessageError(t *testing.T) {
+	_, ok := UnmarshalMessage(nil)
 	require.False(t, ok)
 
-	_, ok = UnmarshalEnvelope([]byte("blahh"))
+	_, ok = UnmarshalMessage([]byte("blahh"))
 	require.False(t, ok)
 
-	_, ok = UnmarshalEnvelope([]byte("LIFTblah"))
+	_, ok = UnmarshalMessage([]byte("LIFTblah"))
 	require.False(t, ok)
 }
 

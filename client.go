@@ -91,10 +91,10 @@ type Client interface {
 	Subscribe(ctx context.Context, subject, name string, offset int64, handler Handler) error
 }
 
-// NewEnvelope returns a serialized message envelope for the given key-value
-// pair. Message keys are optional, so you may pass in nil for the key.
+// NewMessage returns a serialized message for the given key-value pair.
+// Message keys are optional, so you may pass in nil for the key.
 // TODO: change to use options pattern.
-func NewEnvelope(key, value []byte, ackInbox string) []byte {
+func NewMessage(key, value []byte, ackInbox string) []byte {
 	msg := &proto.Message{
 		Key:      key,
 		Value:    value,
@@ -120,10 +120,9 @@ func UnmarshalAck(data []byte) (*proto.Ack, error) {
 	return ack, err
 }
 
-// UnmarshalEnvelope deserializes a Message envelope from the given byte slice.
-// It returns a bool indicating if the given data was actually a Message
-// envelope or not.
-func UnmarshalEnvelope(data []byte) (*proto.Message, bool) {
+// UnmarshalMessage deserializes a message from the given byte slice.  It
+// returns a bool indicating if the given data was actually a Message or not.
+func UnmarshalMessage(data []byte) (*proto.Message, bool) {
 	if len(data) <= envelopeCookieLen {
 		return nil, false
 	}
