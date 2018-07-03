@@ -1,5 +1,15 @@
 //go:generate protoc --gofast_out=plugins=grpc:. ./liftbridge-grpc/api.proto
 
+// Package liftbridge implements a client for the Liftbridge messaging system.
+// Liftbridge provides lightweight, fault-tolerant message streams by
+// implementing a durable stream augmentation NATS. In particular, it offers a
+// publish-subscribe log API that is highly available and horizontally
+// scalable.
+//
+// This package provides APIs for creating and consuming Liftbridge streams and
+// some utility APIs for using Liftbridge in combination with NATS. Publishing
+// messages to Liftbridge is handled by a NATS client since Liftbridge is
+// simply an extension of NATS.
 package liftbridge
 
 import (
@@ -148,6 +158,7 @@ type client struct {
 // addresses for failover purposes. Note that only one seed address needs to be
 // provided as the Client will discover the other brokers when fetching
 // metadata for the cluster.
+// TODO: change to use options pattern.
 func Connect(addrs ...string) (Client, error) {
 	if len(addrs) == 0 {
 		return nil, errors.New("no addresses provided")
@@ -219,6 +230,7 @@ func (c *client) CreateStream(ctx context.Context, info StreamInfo) error {
 // when it reaches the end of the stream. It returns an ErrNoSuchStream if the
 // given stream does not exist. Use a cancelable Context to close a
 // subscription.
+// TODO: change to use options pattern.
 func (c *client) Subscribe(ctx context.Context, subject, name string, offset int64, handler Handler) (err error) {
 	var (
 		pool   *connPool
