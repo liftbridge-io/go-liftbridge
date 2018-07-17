@@ -24,7 +24,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/tylertreat/go-liftbridge/liftbridge-grpc"
+	"github.com/liftbridge-io/go-liftbridge/liftbridge-grpc"
 )
 
 // MaxReplicationFactor can be used to tell the server to set the replication

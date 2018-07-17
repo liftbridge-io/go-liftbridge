@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/liftbridge-io/go-liftbridge"
 	"github.com/nats-io/go-nats"
-	"github.com/tylertreat/go-liftbridge"
 	"golang.org/x/net/context"
 )
 

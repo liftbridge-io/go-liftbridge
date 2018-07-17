@@ -5,8 +5,8 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/tylertreat/go-liftbridge"
-	"github.com/tylertreat/go-liftbridge/liftbridge-grpc"
+	"github.com/liftbridge-io/go-liftbridge"
+	"github.com/liftbridge-io/go-liftbridge/liftbridge-grpc"
 )
 
 func main() {
