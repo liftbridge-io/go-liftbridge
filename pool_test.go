@@ -41,7 +41,7 @@ func cleanupStorage(t *testing.T) {
 func getTestConfig(id string, bootstrap bool, port int) *server.Config {
 	config := server.NewDefaultConfig()
 	config.Clustering.RaftBootstrap = bootstrap
-	config.DataPath = filepath.Join(storagePath, id)
+	config.DataDir = filepath.Join(storagePath, id)
 	config.Clustering.RaftSnapshots = 1
 	config.Clustering.RaftLogging = true
 	config.LogLevel = uint32(log.DebugLevel)
