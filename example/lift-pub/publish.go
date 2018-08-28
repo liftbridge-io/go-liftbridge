@@ -10,6 +10,8 @@ import (
 	"golang.org/x/net/context"
 )
 
+const count = 5
+
 func main() {
 	if err := createStream(); err != nil {
 		panic(err)
@@ -37,13 +39,12 @@ func main() {
 	}
 	defer sub.Unsubscribe()
 
-	count := 5
 	wg.Add(count)
 	fmt.Println("publishing")
 	for i := 0; i < count; i++ {
 		m := liftbridge.NewMessage([]byte(strconv.Itoa(i)),
 			liftbridge.MessageOptions{Key: []byte("test"), AckInbox: ackInbox})
-		if err := conn.Publish("foo", m); err != nil {
+		if err := conn.Publish("bar", m); err != nil {
 			panic(err)
 		}
 	}
@@ -60,8 +61,8 @@ func createStream() error {
 	}
 	defer client.Close()
 	stream := liftbridge.StreamInfo{
-		Subject:           "foo",
-		Name:              "foo-stream",
+		Subject:           "bar",
+		Name:              "bar-stream",
 		ReplicationFactor: 1,
 	}
 	if err := client.CreateStream(context.Background(), stream); err != nil {

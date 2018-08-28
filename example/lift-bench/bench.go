@@ -11,7 +11,7 @@ import (
 
 const (
 	msgSize = 10
-	numMsgs = 100000
+	numMsgs = 1000000
 )
 
 func main() {
