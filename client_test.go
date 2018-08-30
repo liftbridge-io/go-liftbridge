@@ -161,7 +161,7 @@ func TestClientSubscribe(t *testing.T) {
 			cancel()
 			return
 		}
-	})
+	}, StartAt(proto.StartPosition_EARLIEST))
 
 	// Wait to read back publishes messages.
 	select {
