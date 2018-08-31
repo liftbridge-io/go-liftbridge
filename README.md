@@ -158,11 +158,13 @@ func main() {
 
 Liftbridge allows publishers to add metadata to messages, including a key, ack
 inbox, correlation ID, and ack policy. The message key can be used for stream
-compaction in Liftbridge. The ack inbox determines a NATS subject to publish an
-acknowledgement to once Liftbridge has committed the message. The correlation
-id is used to correlate an ack back to the original message. The ack policy
-determines when Liftbridge acknowledges the message: when the stream leader has
-stored the message, when all replicas have stored it, or no ack at all.
+compaction in Liftbridge. Acks are used to guarantee Liftbridge has recorded a
+message to ensure at-least-once delivery. The ack inbox determines a NATS
+subject to publish an acknowledgement to once Liftbridge has committed the
+message. The correlation id is used to correlate an ack back to the original
+message. The ack policy determines when Liftbridge acknowledges the message:
+when the stream leader has stored the message, when all replicas have stored
+it, or no ack at all.
 
 This additional metadata is sent using a message envelope which is a
 [protobuf](https://github.com/liftbridge-io/liftbridge-grpc). This client
