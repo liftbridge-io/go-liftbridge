@@ -548,8 +548,8 @@ func (c *client) dialBroker() (*grpc.ClientConn, error) {
 	)
 	for _, i := range perm {
 		conn, err = grpc.Dial(addrs[i], c.dialOpts...)
-		if err != nil {
-			continue
+		if err == nil {
+			break
 		}
 	}
 	if conn == nil {
