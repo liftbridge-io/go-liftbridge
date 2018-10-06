@@ -43,8 +43,8 @@ func getTestConfig(id string, bootstrap bool, port int) *server.Config {
 	config.Clustering.RaftBootstrapSeed = bootstrap
 	config.DataDir = filepath.Join(storagePath, id)
 	config.Clustering.RaftSnapshots = 1
-	config.Clustering.RaftLogging = true
-	config.LogLevel = uint32(log.DebugLevel)
+	config.Clustering.ServerID = id
+	config.LogLevel = uint32(log.InfoLevel)
 	config.NATS.Servers = []string{"nats://localhost:4222"}
 	config.NoLog = true
 	config.Port = port
@@ -155,13 +155,17 @@ func TestConnPoolReuse(t *testing.T) {
 	require.Equal(t, 0, len(p.conns))
 
 	require.NoError(t, p.put(c1))
+	p.mu.Lock()
 	require.Equal(t, 1, len(p.conns))
 	require.Equal(t, 1, len(p.timers))
+	p.mu.Unlock()
 
 	// Wait for conn to expire.
 	time.Sleep(500 * time.Millisecond)
+	p.mu.Lock()
 	require.Equal(t, 0, len(p.conns))
 	require.Equal(t, 0, len(p.timers))
+	p.mu.Unlock()
 
 	require.Equal(t, 1, invoked)
 
