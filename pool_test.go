@@ -43,8 +43,8 @@ func getTestConfig(id string, bootstrap bool, port int) *server.Config {
 	config.Clustering.RaftBootstrapSeed = bootstrap
 	config.DataDir = filepath.Join(storagePath, id)
 	config.Clustering.RaftSnapshots = 1
-	config.Clustering.RaftLogging = true
-	config.LogLevel = uint32(log.DebugLevel)
+	config.Clustering.ServerID = id
+	config.LogLevel = uint32(log.InfoLevel)
 	config.NATS.Servers = []string{"nats://localhost:4222"}
 	config.NoLog = true
 	config.Port = port
