@@ -155,13 +155,17 @@ func TestConnPoolReuse(t *testing.T) {
 	require.Equal(t, 0, len(p.conns))
 
 	require.NoError(t, p.put(c1))
+	p.mu.Lock()
 	require.Equal(t, 1, len(p.conns))
 	require.Equal(t, 1, len(p.timers))
+	p.mu.Unlock()
 
 	// Wait for conn to expire.
 	time.Sleep(500 * time.Millisecond)
+	p.mu.Lock()
 	require.Equal(t, 0, len(p.conns))
 	require.Equal(t, 0, len(p.timers))
+	p.mu.Unlock()
 
 	require.Equal(t, 1, invoked)
 
