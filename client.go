@@ -112,6 +112,7 @@ type client struct {
 	addrs       map[string]struct{}
 	opts        ClientOptions
 	dialOpts    []grpc.DialOption
+	closed      bool
 }
 
 // ClientOptions are used to control the Client configuration.
@@ -268,14 +269,18 @@ func Connect(addrs []string, options ...ClientOption) (Client, error) {
 
 // Close the client connection.
 func (c *client) Close() error {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	for _, pool := range c.pools {
 		if err := pool.close(); err != nil {
 			return err
 		}
 	}
-	return c.conn.Close()
+	if err := c.conn.Close(); err != nil {
+		return err
+	}
+	c.closed = true
+	return nil
 }
 
 // CreateStream creates a new stream attached to a NATS subject. It returns
@@ -452,6 +457,7 @@ func (c *client) Subscribe(ctx context.Context, subject, name string, handler Ha
 			lastOffset  int64
 			lastError   error
 			resubscribe bool
+			closed      bool
 		)
 		for {
 			var (
@@ -468,9 +474,14 @@ func (c *client) Subscribe(ctx context.Context, subject, name string, handler Ha
 				if code == codes.Unavailable {
 					// This indicates the server went away. Attempt to
 					// resubscribe to the stream leader starting at the last
-					// received offset.
-					resubscribe = true
-					break
+					// received offset unless the connection has been closed.
+					c.mu.RLock()
+					closed = c.closed
+					c.mu.RUnlock()
+					if !closed {
+						resubscribe = true
+						break
+					}
 				}
 				handler(msg, err)
 			}
@@ -484,12 +495,15 @@ func (c *client) Subscribe(ctx context.Context, subject, name string, handler Ha
 		// some time for the leader to failover.
 		if resubscribe {
 			deadline := time.Now().Add(c.opts.ResubscribeWaitTime)
-			for time.Now().Before(deadline) {
+			for time.Now().Before(deadline) && !closed {
 				err := c.Subscribe(ctx, subject, name, handler, StartAtOffset(lastOffset+1))
 				if err == nil {
 					return
 				}
 				time.Sleep(time.Second + (time.Duration(rand.Intn(500)) * time.Millisecond))
+				c.mu.RLock()
+				closed = c.closed
+				c.mu.RUnlock()
 			}
 			handler(nil, lastError)
 		}
