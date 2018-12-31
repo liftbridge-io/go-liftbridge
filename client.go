@@ -271,6 +271,9 @@ func Connect(addrs []string, options ...ClientOption) (Client, error) {
 func (c *client) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.closed {
+		return nil
+	}
 	for _, pool := range c.pools {
 		if err := pool.close(); err != nil {
 			return err
