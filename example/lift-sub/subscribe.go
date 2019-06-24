@@ -2,16 +2,17 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"golang.org/x/net/context"
 
-	"github.com/liftbridge-io/go-liftbridge"
+	lift "github.com/liftbridge-io/go-liftbridge"
 	"github.com/liftbridge-io/go-liftbridge/liftbridge-grpc"
 )
 
 func main() {
 	addr := "localhost:9292"
-	client, err := liftbridge.Connect([]string{addr})
+	client, err := lift.Connect([]string{addr, "localhost:9293"})
 	if err != nil {
 		panic(err)
 	}
@@ -21,8 +22,8 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println(msg.Offset, string(msg.Value))
-	}); err != nil {
+		fmt.Println(time.Unix(0, msg.Timestamp), msg.Offset, string(msg.Key), string(msg.Value))
+	}, lift.StartAtEarliestReceived()); err != nil {
 		panic(err)
 	}
 

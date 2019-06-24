@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/liftbridge-io/go-liftbridge"
+	lift "github.com/liftbridge-io/go-liftbridge"
 	"github.com/nats-io/go-nats"
 	"golang.org/x/net/context"
 )
@@ -27,7 +27,7 @@ func main() {
 	var wg sync.WaitGroup
 
 	sub, err := conn.Subscribe(ackInbox, func(m *nats.Msg) {
-		ack, err := liftbridge.UnmarshalAck(m.Data)
+		ack, err := lift.UnmarshalAck(m.Data)
 		if err != nil {
 			panic(err)
 		}
@@ -42,8 +42,8 @@ func main() {
 	wg.Add(count)
 	fmt.Println("publishing")
 	for i := 0; i < count; i++ {
-		m := liftbridge.NewMessage([]byte(strconv.Itoa(i)),
-			liftbridge.MessageOptions{Key: []byte("test"), AckInbox: ackInbox})
+		m := lift.NewMessage([]byte(strconv.FormatInt(int64(i), 10)),
+			lift.MessageOptions{Key: []byte("test"), AckInbox: ackInbox})
 		if err := conn.Publish("bar", m); err != nil {
 			panic(err)
 		}
@@ -55,18 +55,13 @@ func main() {
 
 func createStream() error {
 	addr := "localhost:9292"
-	client, err := liftbridge.Connect([]string{addr})
+	client, err := lift.Connect([]string{addr})
 	if err != nil {
 		return err
 	}
 	defer client.Close()
-	stream := liftbridge.StreamInfo{
-		Subject:           "bar",
-		Name:              "bar-stream",
-		ReplicationFactor: 1,
-	}
-	if err := client.CreateStream(context.Background(), stream); err != nil {
-		if err != liftbridge.ErrStreamExists {
+	if err := client.CreateStream(context.Background(), "bar", "bar-stream"); err != nil {
+		if err != lift.ErrStreamExists {
 			return err
 		}
 	}
