@@ -2,9 +2,11 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"time"
 
-	"github.com/liftbridge-io/go-liftbridge"
+	lift "github.com/liftbridge-io/go-liftbridge"
+	"github.com/liftbridge-io/go-liftbridge/liftbridge-grpc"
 	"github.com/nats-io/go-nats"
 	"golang.org/x/net/context"
 )
@@ -14,20 +16,17 @@ const (
 	numMsgs = 1000000
 )
 
+var keys = [][]byte{[]byte("foo"), []byte("bar"), []byte("baz"), []byte("qux")}
+
 func main() {
 	addrs := []string{"localhost:9292"}
-	client, err := liftbridge.Connect(addrs)
+	client, err := lift.Connect(addrs)
 	if err != nil {
 		panic(err)
 	}
 	defer client.Close()
-	stream := liftbridge.StreamInfo{
-		Subject:           "bar",
-		Name:              "bar-stream",
-		ReplicationFactor: 1,
-	}
-	if err := client.CreateStream(context.Background(), stream); err != nil {
-		if err != liftbridge.ErrStreamExists {
+	if err := client.CreateStream(context.Background(), "bar", "bar-stream", lift.MaxReplication()); err != nil {
+		if err != lift.ErrStreamExists {
 			panic(err)
 		}
 	}
@@ -57,7 +56,11 @@ func main() {
 
 	start := time.Now()
 	for i := 0; i < numMsgs; i++ {
-		m := liftbridge.NewMessage(msg, liftbridge.MessageOptions{AckInbox: ackInbox})
+		m := lift.NewMessage(msg, lift.MessageOptions{
+			Key:       keys[rand.Intn(len(keys))],
+			AckInbox:  ackInbox,
+			AckPolicy: proto.AckPolicy_ALL,
+		})
 		if err := conn.Publish("bar", m); err != nil {
 			panic(err)
 		}

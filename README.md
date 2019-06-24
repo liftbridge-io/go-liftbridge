@@ -12,7 +12,7 @@ Liftbridge provides the following high-level features:
 - Wildcard subscription support
 - At-least-once delivery support and message replay
 - Message key-value support
-- Log compaction by key (WIP)
+- Log compaction by key
 
 ## Installation
 
@@ -43,11 +43,11 @@ func main() {
 	defer client.Close()
 
 	// Create a stream attached to the NATS subject "foo".
-	stream := lift.StreamInfo{
-		Subject: "foo",
-		Name:    "foo-stream",
-	}
-	if err := client.CreateStream(context.Background(), stream); err != nil {
+    	var (
+        	subject = "foo"
+        	name    = "foo-stream"
+    	)
+	if err := client.CreateStream(context.Background(), subject, name); err != nil {
 		if err != lift.ErrStreamExists {
 			panic(err)
 		}
@@ -55,7 +55,7 @@ func main() {
 
 	// Subscribe to the stream starting from the beginning.
 	ctx := context.Background()
-	if err := client.Subscribe(ctx, stream.Subject, stream.Name, func(msg *proto.Message, err error) {
+	if err := client.Subscribe(ctx, subject, name, func(msg *proto.Message, err error) {
 		if err != nil {
 			panic(err)
 		}
@@ -82,16 +82,10 @@ of a load-balance group for the stream to join. When there are multiple streams
 in the same group, messages will be balanced among them.
 
 ```go
-// Create a stream attached to the NATS subject "foo.*".
-stream := lift.StreamInfo{
-    Subject:           "foo.*",
-    Name:              "my-stream",
-    ReplicationFactor: lift.MaxReplicationFactor, // Replicate to all the brokers in the cluster
-}
-
-// Create the stream. ErrStreamExists is returned if a stream with the given
-// name already exists for the subject.
-client.CreateStream(context.Background(), stream)
+// Create a stream attached to the NATS subject "foo.*" that is replicated to
+// all the brokers in the cluster. ErrStreamExists is returned if a stream with
+// the given name already exists for the subject.
+client.CreateStream(context.Background(), "foo.*", "my-stream", lift.MaxReplication())
 ```
 
 ### Subscription Start/Replay Options

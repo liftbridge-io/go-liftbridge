@@ -26,7 +26,7 @@ func assertMsg(t *testing.T, expected *message, msg *proto.Message) {
 	require.Equal(t, expected.Value, msg.Value)
 }
 
-func getStreamLeader(t *testing.T, timeout time.Duration, stream StreamInfo,
+func getStreamLeader(t *testing.T, timeout time.Duration, subject, name string,
 	client *client, servers map[*server.Config]*server.Server) (*server.Server, *server.Config) {
 	var (
 		leaderID string
@@ -36,7 +36,7 @@ func getStreamLeader(t *testing.T, timeout time.Duration, stream StreamInfo,
 		metadata, err := client.updateMetadata()
 		require.NoError(t, err)
 		for _, meta := range metadata.Metadata {
-			if meta.Stream.Subject == stream.Subject && meta.Stream.Name == stream.Name {
+			if meta.Stream.Subject == subject && meta.Stream.Name == name {
 				leaderID = meta.Leader
 			}
 		}
@@ -120,8 +120,7 @@ func TestClientSubscribe(t *testing.T) {
 	defer client.Close()
 	time.Sleep(2 * time.Second)
 
-	stream := StreamInfo{Subject: "foo", Name: "bar", ReplicationFactor: 1}
-	require.NoError(t, client.CreateStream(context.Background(), stream))
+	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
 
 	nc, err := nats.GetDefaultOptions().Connect()
 	require.NoError(t, err)
@@ -268,8 +267,9 @@ func TestClientResubscribe(t *testing.T) {
 	defer c.Close()
 	time.Sleep(2 * time.Second)
 
-	stream := StreamInfo{Subject: "foo", Name: "bar", ReplicationFactor: 3}
-	require.NoError(t, c.CreateStream(context.Background(), stream))
+	subject := "foo"
+	name := "bar"
+	require.NoError(t, c.CreateStream(context.Background(), subject, name, ReplicationFactor(3)))
 
 	nc, err := nats.GetDefaultOptions().Connect()
 	require.NoError(t, err)
@@ -353,12 +353,12 @@ func TestClientResubscribe(t *testing.T) {
 	time.Sleep(time.Second)
 
 	// Kill the stream leader.
-	leader, leaderConfig := getStreamLeader(t, 10*time.Second, stream, c.(*client), servers)
+	leader, leaderConfig := getStreamLeader(t, 10*time.Second, subject, name, c.(*client), servers)
 	leader.Stop()
 
 	// Wait for new leader to be elected.
 	delete(servers, leaderConfig)
-	_, leaderConfig = getStreamLeader(t, 10*time.Second, stream, c.(*client), servers)
+	_, leaderConfig = getStreamLeader(t, 10*time.Second, subject, name, c.(*client), servers)
 
 	// Publish some more.
 	for i := 0; i < count; i++ {
@@ -412,8 +412,7 @@ func TestClientResubscribeFail(t *testing.T) {
 	defer client.Close()
 	time.Sleep(2 * time.Second)
 
-	stream := StreamInfo{Subject: "foo", Name: "bar", ReplicationFactor: 1}
-	require.NoError(t, client.CreateStream(context.Background(), stream))
+	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
 
 	ch := make(chan error)
 	err = client.Subscribe(context.Background(), "foo", "bar", func(msg *proto.Message, err error) {
@@ -448,12 +447,7 @@ func ExampleClient_createStream() {
 		panic(err)
 	}
 	defer client.Close()
-	stream := StreamInfo{
-		Subject:           "foo",
-		Name:              "foo-stream",
-		ReplicationFactor: 1,
-	}
-	if err := client.CreateStream(context.Background(), stream); err != nil {
+	if err := client.CreateStream(context.Background(), "foo", "foo-stream"); err != nil {
 		panic(err)
 	}
 }
