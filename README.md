@@ -43,10 +43,10 @@ func main() {
 	defer client.Close()
 
 	// Create a stream attached to the NATS subject "foo".
-    var (
-        subject = "foo"
-        name    = "foo-stream"
-    )
+    	var (
+        	subject = "foo"
+        	name    = "foo-stream"
+    	)
 	if err := client.CreateStream(context.Background(), subject, name); err != nil {
 		if err != lift.ErrStreamExists {
 			panic(err)
