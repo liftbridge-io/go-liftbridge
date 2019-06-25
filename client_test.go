@@ -493,7 +493,8 @@ func ExampleNewMessage() {
 		Key([]byte("key")),
 		AckPolicyAll(),
 		AckInbox("ack"),
-		CorrelationID("123"))
+		CorrelationID("123"),
+	)
 	if err := conn.Publish("foo", msg); err != nil {
 		panic(err)
 	}
