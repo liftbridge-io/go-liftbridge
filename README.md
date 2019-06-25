@@ -171,12 +171,12 @@ var (
 )
 
 // Create a message envelope to publish.
-msg := lift.NewMessage([]byte("Hello, world!"), lift.MessageOptions{
-    Key:           []byte("foo"),       // Key to set on the message
-    AckInbox:      ackInbox,            // Send ack to this NATS subject
-    AckPolicy:     proto.AckPolicy_ALL, // Send ack once message is fully replicated
-    CorrelationID: cid,                 // Set the ID which will be sent on the ack
-})
+msg := lift.NewMessage([]byte("Hello, world!"),
+    lift.Key([]byte("foo")), // Key to set on the message
+    lift.AckInbox(ackInbox), // Send ack to this NATS subject
+    lift.AckPolicyAll(),     // Send ack once message is fully replicated
+    lift.CorrelationID(cid), // Set the ID which will be sent on the ack
+)
 
 // Setup a NATS subscription for acks.
 sub, _ := nc.SubscribeSync(ackInbox)
