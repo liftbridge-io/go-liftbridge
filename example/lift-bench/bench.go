@@ -6,7 +6,6 @@ import (
 	"time"
 
 	lift "github.com/liftbridge-io/go-liftbridge"
-	"github.com/liftbridge-io/go-liftbridge/liftbridge-grpc"
 	"github.com/nats-io/go-nats"
 	"golang.org/x/net/context"
 )
@@ -56,11 +55,11 @@ func main() {
 
 	start := time.Now()
 	for i := 0; i < numMsgs; i++ {
-		m := lift.NewMessage(msg, lift.MessageOptions{
-			Key:       keys[rand.Intn(len(keys))],
-			AckInbox:  ackInbox,
-			AckPolicy: proto.AckPolicy_ALL,
-		})
+		m := lift.NewMessage(msg,
+			lift.Key(keys[rand.Intn(len(keys))]),
+			lift.AckInbox(ackInbox),
+			lift.AckPolicyAll(),
+		)
 		if err := conn.Publish("bar", m); err != nil {
 			panic(err)
 		}

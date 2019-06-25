@@ -47,9 +47,6 @@ var (
 	// ErrNoSuchStream is returned by Subscribe if the specified stream does
 	// not exist in the Liftbridge cluster.
 	ErrNoSuchStream = errors.New("stream does not exist")
-
-	envelopeCookie    = []byte("LIFT")
-	envelopeCookieLen = len(envelopeCookie)
 )
 
 // Handler is the callback invoked by Subscribe when a message is received on
@@ -118,7 +115,7 @@ type Client interface {
 	// the NATS subject the stream is attached to, and name is the stream
 	// identifier, unique per subject. It returns ErrStreamExists if a stream
 	// with the given subject and name already exists.
-	CreateStream(ctx context.Context, subject, name string, options ...StreamOption) error
+	CreateStream(ctx context.Context, subject, name string, opts ...StreamOption) error
 
 	// Subscribe creates an ephemeral subscription for the given stream. It
 	// begins receiving messages starting at the configured position and waits
