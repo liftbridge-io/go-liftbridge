@@ -43,7 +43,7 @@ func main() {
 	fmt.Println("publishing")
 	for i := 0; i < count; i++ {
 		m := lift.NewMessage([]byte(strconv.FormatInt(int64(i), 10)),
-			lift.MessageOptions{Key: []byte("test"), AckInbox: ackInbox})
+			lift.Key([]byte("test")), lift.AckInbox(ackInbox))
 		if err := conn.Publish("bar", m); err != nil {
 			panic(err)
 		}

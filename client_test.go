@@ -80,7 +80,7 @@ func TestNewMessageUnmarshal(t *testing.T) {
 		value    = []byte("bar")
 		ackInbox = "acks"
 	)
-	msg := NewMessage(value, MessageOptions{Key: key, AckInbox: ackInbox})
+	msg := NewMessage(value, Key(key), AckInbox(ackInbox))
 	actual, ok := UnmarshalMessage(msg)
 	require.True(t, ok)
 	require.Equal(t, key, actual.Key)
@@ -155,7 +155,7 @@ func TestClientSubscribe(t *testing.T) {
 
 	for i := 0; i < count; i++ {
 		err = nc.Publish("foo", NewMessage(expected[i].Value,
-			MessageOptions{Key: expected[i].Key, AckInbox: ackInbox}))
+			Key(expected[i].Key), AckInbox(ackInbox)))
 		require.NoError(t, err)
 	}
 
@@ -207,7 +207,7 @@ func TestClientSubscribe(t *testing.T) {
 
 	for i := 0; i < count; i++ {
 		err = nc.Publish("foo", NewMessage(expected[i+count].Value,
-			MessageOptions{Key: expected[i+count].Key, AckInbox: ackInbox}))
+			Key(expected[i+count].Key), AckInbox(ackInbox)))
 		require.NoError(t, err)
 	}
 
@@ -304,11 +304,10 @@ func TestClientResubscribe(t *testing.T) {
 
 	for i := 0; i < count; i++ {
 		err = nc.Publish("foo", NewMessage(expected[i].Value,
-			MessageOptions{
-				Key:       expected[i].Key,
-				AckInbox:  ackInbox,
-				AckPolicy: proto.AckPolicy_ALL,
-			}))
+			Key(expected[i].Key),
+			AckInbox(ackInbox),
+			AckPolicyAll(),
+		))
 		require.NoError(t, err)
 	}
 
@@ -371,11 +370,10 @@ func TestClientResubscribe(t *testing.T) {
 
 	for i := 0; i < count; i++ {
 		err = nc.Publish("foo", NewMessage(expected[i+count].Value,
-			MessageOptions{
-				Key:       expected[i+count].Key,
-				AckInbox:  ackInbox,
-				AckPolicy: proto.AckPolicy_ALL,
-			}))
+			Key(expected[i+count].Key),
+			AckInbox(ackInbox),
+			AckPolicyAll(),
+		))
 		require.NoError(t, err)
 	}
 
@@ -484,8 +482,18 @@ func ExampleNewMessage() {
 	defer conn.Flush()
 	defer conn.Close()
 
-	// Publish message.
-	msg := NewMessage([]byte("value"), MessageOptions{Key: []byte("key")})
+	// Publish simple message.
+	msg := NewMessage([]byte("value"))
+	if err := conn.Publish("foo", msg); err != nil {
+		panic(err)
+	}
+
+	// Publish message with options.
+	msg = NewMessage([]byte("value"),
+		Key([]byte("key")),
+		AckPolicyAll(),
+		AckInbox("ack"),
+		CorrelationID("123"))
 	if err := conn.Publish("foo", msg); err != nil {
 		panic(err)
 	}
@@ -515,7 +523,7 @@ func ExampleUnmarshalAck() {
 	}
 
 	// Publish message.
-	msg := NewMessage([]byte("value"), MessageOptions{Key: []byte("key"), AckInbox: ackInbox})
+	msg := NewMessage([]byte("value"), Key([]byte("key")), AckInbox(ackInbox))
 	if err := conn.Publish("foo", msg); err != nil {
 		panic(err)
 	}
