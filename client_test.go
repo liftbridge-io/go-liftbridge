@@ -341,7 +341,7 @@ func TestClientResubscribe(t *testing.T) {
 	}, StartAtEarliestReceived())
 	require.NoError(t, err)
 
-	// Wait to read back publishes messages.
+	// Wait to read back published messages.
 	select {
 	case <-ch1:
 	case <-time.After(10 * time.Second):
@@ -425,6 +425,67 @@ func TestClientResubscribeFail(t *testing.T) {
 		require.Error(t, err)
 	case <-time.After(10 * time.Second):
 		t.Fatal("Did not receive expected error")
+	}
+}
+
+// Ensure messages sent with the publish API are received on a stream.
+func TestClientPublish(t *testing.T) {
+	defer cleanupStorage(t)
+
+	// Use a central NATS server.
+	ns := natsdTest.RunDefaultServer()
+	defer ns.Shutdown()
+
+	config := getTestConfig("a", true, 5050)
+	s := runServerWithConfig(t, config)
+	defer s.Stop()
+
+	client, err := Connect([]string{"localhost:5050"})
+	require.NoError(t, err)
+	defer client.Close()
+	time.Sleep(2 * time.Second)
+
+	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
+
+	count := 5
+	expected := make([]*message, count)
+	for i := 0; i < count; i++ {
+		expected[i] = &message{
+			Key:    []byte("test"),
+			Value:  []byte(strconv.Itoa(i)),
+			Offset: int64(i),
+		}
+	}
+
+	for i := 0; i < count; i++ {
+		err := client.Publish(context.Background(), "foo", expected[i].Value,
+			Key(expected[i].Key), AckPolicyLeader())
+		require.NoError(t, err)
+	}
+
+	// Subscribe from the beginning.
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	recv := 0
+	ch := make(chan struct{})
+	err = client.Subscribe(ctx, "foo", "bar", func(msg *proto.Message, err error) {
+		require.NoError(t, err)
+		expect := expected[recv]
+		assertMsg(t, expect, msg)
+		recv++
+		if recv == count {
+			close(ch)
+			cancel()
+			return
+		}
+	}, StartAtEarliestReceived())
+	require.NoError(t, err)
+
+	// Wait to read back published messages.
+	select {
+	case <-ch:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Did not receive all expected messages")
 	}
 }
 

@@ -17,6 +17,18 @@ func main() {
 		panic(err)
 	}
 	defer client.Close()
+
+	if err := client.CreateStream(
+		context.Background(), "bar", "bar-stream",
+		lift.MaxReplication(),
+	); err != nil {
+		if err != lift.ErrStreamExists {
+			panic(err)
+		}
+	} else {
+		fmt.Println("created stream bar-stream")
+	}
+
 	ctx := context.Background()
 	if err := client.Subscribe(ctx, "bar", "bar-stream", func(msg *proto.Message, err error) {
 		if err != nil {
