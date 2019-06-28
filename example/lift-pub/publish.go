@@ -33,7 +33,7 @@ func main() {
 	fmt.Println("publishing")
 	for i := 0; i < count; i++ {
 		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-		if err := client.Publish(ctx, "bar",
+		if _, err := client.Publish(ctx, "bar",
 			[]byte(strconv.FormatInt(int64(i), 10)),
 			lift.Key([]byte("test")), lift.AckPolicyAll(),
 		); err != nil {
