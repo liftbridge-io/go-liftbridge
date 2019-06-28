@@ -127,9 +127,11 @@ type Client interface {
 
 	// Publish publishes a new message to the subject. If the AckPolicy is not
 	// NONE and a deadline is provided, this will synchronously block until the
-	// ack is received. If the ack is not received in time, a DeadlineExceeded
-	// status code is returned.
-	Publish(ctx context.Context, subject string, value []byte, opts ...MessageOption) error
+	// first ack is received. If the ack is not received in time, a
+	// DeadlineExceeded status code is returned. If an AckPolicy and deadline
+	// are configured, this returns the first Ack on success, otherwise it
+	// returns nil.
+	Publish(ctx context.Context, subject string, value []byte, opts ...MessageOption) (*proto.Ack, error)
 }
 
 // client implements the Client interface. It maintains a pool of connections
@@ -557,11 +559,14 @@ func (c *client) Subscribe(ctx context.Context, subject, name string, handler Ha
 	return nil
 }
 
-// Publish a new message to a subject. If the AckPolicy is not NONE and a
-// deadline is provided, this will synchronously block until the ack is
-// received. If the ack is not received in time, a DeadlineExceeded status code
-// is returned.
-func (c *client) Publish(ctx context.Context, subject string, value []byte, options ...MessageOption) error {
+// Publish publishes a new message to the subject. If the AckPolicy is not NONE
+// and a deadline is provided, this will synchronously block until the first
+// ack is received. If the ack is not received in time, a DeadlineExceeded
+// status code is returned. If an AckPolicy and deadline are configured, this
+// returns the first Ack on success, otherwise it returns nil.
+func (c *client) Publish(ctx context.Context, subject string, value []byte,
+	options ...MessageOption) (*proto.Ack, error) {
+
 	opts := &MessageOptions{}
 	for _, opt := range options {
 		opt(opts)
@@ -574,10 +579,17 @@ func (c *client) Publish(ctx context.Context, subject string, value []byte, opti
 		CorrelationId: opts.CorrelationID,
 		AckPolicy:     opts.AckPolicy,
 	}}
-	return c.doResilientRPC(func(client proto.APIClient) error {
-		_, err := client.Publish(ctx, req)
-		return err
-	})
+	var (
+		ack *proto.Ack
+		err = c.doResilientRPC(func(client proto.APIClient) error {
+			resp, err := client.Publish(ctx, req)
+			if err == nil {
+				ack = resp.Ack
+			}
+			return err
+		})
+	)
+	return ack, err
 }
 
 // connFactory returns a pool connFactory for the given address. The
