@@ -125,9 +125,9 @@ type Client interface {
 	// subscription.
 	Subscribe(ctx context.Context, subject, name string, handler Handler, opts ...SubscriptionOption) error
 
-	// Publish publishes a new message to the subject. If the AckPolicy is not
-	// NONE and a deadline is provided, this will synchronously block until the
-	// first ack is received. If the ack is not received in time, a
+	// Publish publishes a new message to the NATS subject. If the AckPolicy is
+	// not NONE and a deadline is provided, this will synchronously block until
+	// the first ack is received. If the ack is not received in time, a
 	// DeadlineExceeded status code is returned. If an AckPolicy and deadline
 	// are configured, this returns the first Ack on success, otherwise it
 	// returns nil.
@@ -559,11 +559,11 @@ func (c *client) Subscribe(ctx context.Context, subject, name string, handler Ha
 	return nil
 }
 
-// Publish publishes a new message to the subject. If the AckPolicy is not NONE
-// and a deadline is provided, this will synchronously block until the first
-// ack is received. If the ack is not received in time, a DeadlineExceeded
-// status code is returned. If an AckPolicy and deadline are configured, this
-// returns the first Ack on success, otherwise it returns nil.
+// Publish publishes a new message to the NATS subject. If the AckPolicy is not
+// NONE and a deadline is provided, this will synchronously block until the
+// first ack is received. If the ack is not received in time, a
+// DeadlineExceeded status code is returned. If an AckPolicy and deadline are
+// configured, this returns the first Ack on success, otherwise it returns nil.
 func (c *client) Publish(ctx context.Context, subject string, value []byte,
 	options ...MessageOption) (*proto.Ack, error) {
 
