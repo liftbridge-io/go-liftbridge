@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/liftbridge-io/liftbridge/server"
 	natsdTest "github.com/nats-io/nats-server/test"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/require"
-	"github.com/liftbridge-io/liftbridge/server"
 	"golang.org/x/net/context"
 
 	"github.com/liftbridge-io/go-liftbridge/liftbridge-grpc"

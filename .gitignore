@@ -1,20 +1,28 @@
-# Build and Release Folders
-bin/
-bin-debug/
-bin-release/
-vender/
-.settings/
-node_modules/
-vod-ts-data/
-vod-test/
+# IDE ignore
 .idea/
-client/
-dist/
-vendor/
-*.swf
-*.air
-*.ipa
-*.apk
+*.ipr
+*.iml
+*.iws
+.vscode/
 
+# temp ignore
+*.log
+*.cache
+*.diff
+*.exe
+*.exe~
+*.patch
+*.tmp
+*.swp
 
+# system ignore
+.DS_Store
+Thumbs.db
 
+# build
+/cmd/comet/comet
+/cmd/logic/logic
+/cmd/job/job
+/target
+/configs
+/dist

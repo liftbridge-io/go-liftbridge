@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/liftbridge-io/liftbridge/server"
 	natsdTest "github.com/nats-io/nats-server/test"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
-	"github.com/liftbridge-io/liftbridge/server"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/grpclog"
 )
