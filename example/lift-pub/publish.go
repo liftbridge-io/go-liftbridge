@@ -5,8 +5,9 @@ import (
 	"strconv"
 	"time"
 
-	lift "github.com/liftbridge-io/go-liftbridge"
 	"golang.org/x/net/context"
+
+	lift "github.com/liftbridge-io/go-liftbridge"
 )
 
 const count = 5

@@ -5,9 +5,10 @@ import (
 	"math/rand"
 	"time"
 
-	lift "github.com/liftbridge-io/go-liftbridge"
-	"github.com/nats-io/go-nats"
+	"github.com/nats-io/nats.go"
 	"golang.org/x/net/context"
+
+	lift "github.com/liftbridge-io/go-liftbridge"
 )
 
 const (
