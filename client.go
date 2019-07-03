@@ -434,126 +434,12 @@ func (c *client) Subscribe(ctx context.Context, subject, name string, handler Ha
 		}
 	}
 
-	var (
-		pool   *connPool
-		addr   string
-		conn   *grpc.ClientConn
-		stream proto.API_SubscribeClient
-	)
-	for i := 0; i < 5; i++ {
-		pool, addr, err = c.getPoolAndAddr(subject, name)
-		if err != nil {
-			time.Sleep(50 * time.Millisecond)
-			c.updateMetadata()
-			continue
-		}
-		conn, err = pool.get(c.connFactory(addr))
-		if err != nil {
-			time.Sleep(50 * time.Millisecond)
-			c.updateMetadata()
-			continue
-		}
-		var (
-			client = proto.NewAPIClient(conn)
-			req    = &proto.SubscribeRequest{
-				Subject:        subject,
-				Name:           name,
-				StartPosition:  opts.StartPosition,
-				StartOffset:    opts.StartOffset,
-				StartTimestamp: opts.StartTimestamp.UnixNano(),
-			}
-		)
-		stream, err = client.Subscribe(ctx, req)
-		if err != nil {
-			if status.Code(err) == codes.Unavailable {
-				time.Sleep(50 * time.Millisecond)
-				c.updateMetadata()
-				continue
-			}
-			return err
-		}
-
-		// The server will either send an empty message, indicating the
-		// subscription was successfully created, or an error.
-		_, err = stream.Recv()
-		if status.Code(err) == codes.FailedPrecondition {
-			// This indicates the server was not the stream leader. Refresh
-			// metadata and retry after waiting a bit.
-			time.Sleep(time.Duration(10+i*50) * time.Millisecond)
-			c.updateMetadata()
-			continue
-		}
-		if err != nil {
-			if status.Code(err) == codes.NotFound {
-				err = ErrNoSuchStream
-			}
-			return err
-		}
-		break
-	}
-
-	if stream == nil {
+	stream, releaseConn, err := c.subscribe(ctx, subject, name, opts)
+	if err != nil {
 		return err
 	}
 
-	go func() {
-		defer pool.put(conn)
-		var (
-			lastOffset  int64
-			lastError   error
-			resubscribe bool
-			closed      bool
-		)
-		for {
-			var (
-				msg, err = stream.Recv()
-				code     = status.Code(err)
-			)
-			if msg != nil {
-				lastOffset = msg.Offset
-			}
-			if err != nil {
-				lastError = err
-			}
-			if err == nil || (err != nil && code != codes.Canceled) {
-				if code == codes.Unavailable {
-					// This indicates the server went away. Attempt to
-					// resubscribe to the stream leader starting at the last
-					// received offset unless the connection has been closed.
-					c.mu.RLock()
-					closed = c.closed
-					c.mu.RUnlock()
-					if !closed {
-						resubscribe = true
-						break
-					}
-				}
-				handler(msg, err)
-			}
-			if err != nil {
-				break
-			}
-		}
-
-		// Attempt to resubscribe to the stream leader starting at the last
-		// received offset. Do this in a loop with a backoff since it may take
-		// some time for the leader to failover.
-		if resubscribe {
-			deadline := time.Now().Add(c.opts.ResubscribeWaitTime)
-			for time.Now().Before(deadline) && !closed {
-				err := c.Subscribe(ctx, subject, name, handler, StartAtOffset(lastOffset+1))
-				if err == nil {
-					return
-				}
-				time.Sleep(time.Second + (time.Duration(rand.Intn(500)) * time.Millisecond))
-				c.mu.RLock()
-				closed = c.closed
-				c.mu.RUnlock()
-			}
-			handler(nil, lastError)
-		}
-	}()
-
+	go c.dispatchStream(ctx, subject, name, stream, releaseConn, handler)
 	return nil
 }
 
@@ -588,6 +474,130 @@ func (c *client) Publish(ctx context.Context, subject string, value []byte,
 		})
 	)
 	return ack, err
+}
+
+func (c *client) subscribe(ctx context.Context, subject, name string,
+	opts *SubscriptionOptions) (proto.API_SubscribeClient, func(), error) {
+	var (
+		pool   *connPool
+		addr   string
+		conn   *grpc.ClientConn
+		stream proto.API_SubscribeClient
+		err    error
+	)
+	for i := 0; i < 5; i++ {
+		pool, addr, err = c.getPoolAndAddr(subject, name)
+		if err != nil {
+			time.Sleep(50 * time.Millisecond)
+			c.updateMetadata()
+			continue
+		}
+		conn, err = pool.get(c.connFactory(addr))
+		if err != nil {
+			time.Sleep(50 * time.Millisecond)
+			c.updateMetadata()
+			continue
+		}
+		var (
+			client = proto.NewAPIClient(conn)
+			req    = &proto.SubscribeRequest{
+				Subject:        subject,
+				Name:           name,
+				StartPosition:  opts.StartPosition,
+				StartOffset:    opts.StartOffset,
+				StartTimestamp: opts.StartTimestamp.UnixNano(),
+			}
+		)
+		stream, err = client.Subscribe(ctx, req)
+		if err != nil {
+			if status.Code(err) == codes.Unavailable {
+				time.Sleep(50 * time.Millisecond)
+				c.updateMetadata()
+				continue
+			}
+			return nil, nil, err
+		}
+
+		// The server will either send an empty message, indicating the
+		// subscription was successfully created, or an error.
+		_, err = stream.Recv()
+		if status.Code(err) == codes.FailedPrecondition {
+			// This indicates the server was not the stream leader. Refresh
+			// metadata and retry after waiting a bit.
+			time.Sleep(time.Duration(10+i*50) * time.Millisecond)
+			c.updateMetadata()
+			continue
+		}
+		if err != nil {
+			if status.Code(err) == codes.NotFound {
+				err = ErrNoSuchStream
+			}
+			return nil, nil, err
+		}
+		return stream, func() { pool.put(conn) }, nil
+	}
+	return nil, nil, err
+}
+
+func (c *client) dispatchStream(ctx context.Context, subject, name string,
+	stream proto.API_SubscribeClient, releaseConn func(), handler Handler) {
+
+	defer releaseConn()
+	var (
+		lastOffset  int64
+		lastError   error
+		resubscribe bool
+		closed      bool
+	)
+	for {
+		var (
+			msg, err = stream.Recv()
+			code     = status.Code(err)
+		)
+		if msg != nil {
+			lastOffset = msg.Offset
+		}
+		if err != nil {
+			lastError = err
+		}
+		if err == nil || (err != nil && code != codes.Canceled) {
+			if code == codes.Unavailable {
+				// This indicates the server went away or the connection was
+				// closed. Attempt to resubscribe to the stream leader starting
+				// at the last received offset unless the connection has been
+				// closed.
+				c.mu.RLock()
+				closed = c.closed
+				c.mu.RUnlock()
+				if !closed {
+					resubscribe = true
+				}
+				break
+			}
+			handler(msg, err)
+		}
+		if err != nil {
+			break
+		}
+	}
+
+	// Attempt to resubscribe to the stream leader starting at the last
+	// received offset. Do this in a loop with a backoff since it may take
+	// some time for the leader to failover.
+	if resubscribe {
+		deadline := time.Now().Add(c.opts.ResubscribeWaitTime)
+		for time.Now().Before(deadline) && !closed {
+			err := c.Subscribe(ctx, subject, name, handler, StartAtOffset(lastOffset+1))
+			if err == nil {
+				return
+			}
+			time.Sleep(time.Second + (time.Duration(rand.Intn(500)) * time.Millisecond))
+			c.mu.RLock()
+			closed = c.closed
+			c.mu.RUnlock()
+		}
+		handler(nil, lastError)
+	}
 }
 
 // connFactory returns a pool connFactory for the given address. The
