@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/liftbridge-io/liftbridge/server"
-	natsdTest "github.com/nats-io/gnatsd/test"
+	natsdTest "github.com/nats-io/nats-server/test"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
