@@ -81,12 +81,19 @@ func TestNewMessageUnmarshal(t *testing.T) {
 		value    = []byte("bar")
 		ackInbox = "acks"
 	)
-	msg := NewMessage(value, Key(key), AckInbox(ackInbox))
+	msg := NewMessage(value,
+		Key(key),
+		AckInbox(ackInbox),
+		AckPolicyNone(),
+		CorrelationID("123"),
+	)
 	actual, ok := UnmarshalMessage(msg)
 	require.True(t, ok)
 	require.Equal(t, key, actual.Key)
 	require.Equal(t, value, actual.Value)
 	require.Equal(t, ackInbox, actual.AckInbox)
+	require.Equal(t, proto.AckPolicy_NONE, actual.AckPolicy)
+	require.Equal(t, "123", actual.CorrelationId)
 }
 
 func TestUnmarshalMessageError(t *testing.T) {
@@ -554,6 +561,60 @@ func TestClientPublishNoAck(t *testing.T) {
 	select {
 	case <-ch:
 	case <-time.After(10 * time.Second):
+		t.Fatal("Did not receive all expected messages")
+	}
+}
+
+// Ensure headers are set correctly on messages.
+func TestClientPublishHeaders(t *testing.T) {
+	defer cleanupStorage(t)
+
+	// Use a central NATS server.
+	ns := natsdTest.RunDefaultServer()
+	defer ns.Shutdown()
+
+	config := getTestConfig("a", true, 5050)
+	s := runServerWithConfig(t, config)
+	defer s.Stop()
+
+	client, err := Connect([]string{"localhost:5050"})
+	require.NoError(t, err)
+	defer client.Close()
+	time.Sleep(2 * time.Second)
+
+	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
+
+	ack, err := client.Publish(context.Background(), "foo",
+		[]byte("hello"),
+		Header("a", []byte("header")),
+		Headers(map[string][]byte{"some": []byte("more")}))
+	require.NoError(t, err)
+	require.Nil(t, ack)
+
+	// Subscribe from the beginning.
+	ch := make(chan *proto.Message)
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	err = client.Subscribe(ctx, "foo", "bar", func(msg *proto.Message, err error) {
+		require.NoError(t, err)
+		ch <- msg
+		cancel()
+	}, StartAtEarliestReceived())
+	require.NoError(t, err)
+
+	// Wait to read back published messages.
+	select {
+	case msg := <-ch:
+		require.Len(t, msg.Headers, 2)
+		for name, value := range msg.Headers {
+			if name == "a" {
+				require.Equal(t, []byte("header"), value)
+			}
+			if name == "some" {
+				require.Equal(t, []byte("more"), value)
+			}
+		}
+	case <-time.After(5 * time.Second):
 		t.Fatal("Did not receive all expected messages")
 	}
 }

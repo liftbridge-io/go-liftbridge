@@ -2,10 +2,10 @@ version: 2
 jobs:
   build:
     docker:
-      - image: circleci/golang:1.10
+      - image: circleci/golang:1.12
 
     working_directory: /go/src/github.com/liftbridge-io/go-liftbridge
     steps:
       - checkout
-      - run: go get -v -t -d ./...
-      - run: go test -v ./...
+      - run: GO111MODULE=on go get -v -d ./...
+      - run: GO111MODULE=on go test -v ./...

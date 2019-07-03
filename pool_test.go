@@ -46,7 +46,7 @@ func getTestConfig(id string, bootstrap bool, port int) *server.Config {
 	config.Clustering.ServerID = id
 	config.LogLevel = uint32(log.InfoLevel)
 	config.NATS.Servers = []string{"nats://localhost:4222"}
-	config.NoLog = true
+	config.LogSilent = true
 	config.Port = port
 	return config
 }
