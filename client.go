@@ -7,9 +7,7 @@
 // scalable.
 //
 // This package provides APIs for creating and consuming Liftbridge streams and
-// some utility APIs for using Liftbridge in combination with NATS. Publishing
-// messages to Liftbridge is handled by a NATS client since Liftbridge is
-// simply an extension of NATS.
+// some utility APIs for using Liftbridge in combination with NATS.
 package liftbridge
 
 import (
