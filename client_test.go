@@ -130,28 +130,7 @@ func TestClientSubscribe(t *testing.T) {
 
 	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
 
-	nc, err := nats.GetDefaultOptions().Connect()
-	require.NoError(t, err)
-	defer nc.Close()
-
-	ackInbox := "acks"
-	acked := 0
 	count := 5
-	acksCh1 := make(chan struct{})
-	acksCh2 := make(chan struct{})
-	_, err = nc.Subscribe(ackInbox, func(m *nats.Msg) {
-		_, err := UnmarshalAck(m.Data)
-		require.NoError(t, err)
-		acked++
-		if acked == count {
-			close(acksCh1)
-		}
-		if acked == 2*count {
-			close(acksCh2)
-		}
-	})
-	require.NoError(t, err)
-
 	expected := make([]*message, count)
 	for i := 0; i < count; i++ {
 		expected[i] = &message{
@@ -162,25 +141,16 @@ func TestClientSubscribe(t *testing.T) {
 	}
 
 	for i := 0; i < count; i++ {
-		err = nc.Publish("foo", NewMessage(expected[i].Value,
-			Key(expected[i].Key), AckInbox(ackInbox)))
+		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+		_, err := client.Publish(ctx, "foo", expected[i].Value, Key(expected[i].Key))
 		require.NoError(t, err)
 	}
 
-	// Ensure all acks were received.
-	select {
-	case <-acksCh1:
-	case <-time.After(10 * time.Second):
-		t.Fatal("Did not receive all expected acks")
-	}
-
 	// Subscribe from the beginning.
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
 	recv := 0
 	ch1 := make(chan struct{})
 	ch2 := make(chan struct{})
-	err = client.Subscribe(ctx, "foo", "bar", func(msg *proto.Message, err error) {
+	err = client.Subscribe(context.Background(), "foo", "bar", func(msg *proto.Message, err error) {
 		require.NoError(t, err)
 		expect := expected[recv]
 		assertMsg(t, expect, msg)
@@ -191,7 +161,6 @@ func TestClientSubscribe(t *testing.T) {
 		}
 		if recv == 2*count {
 			close(ch2)
-			cancel()
 			return
 		}
 	}, StartAtEarliestReceived())
@@ -214,16 +183,10 @@ func TestClientSubscribe(t *testing.T) {
 	}
 
 	for i := 0; i < count; i++ {
-		err = nc.Publish("foo", NewMessage(expected[i+count].Value,
-			Key(expected[i+count].Key), AckInbox(ackInbox)))
+		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+		_, err := client.Publish(ctx, "foo", expected[i+count].Value,
+			Key(expected[i+count].Key))
 		require.NoError(t, err)
-	}
-
-	// Ensure all acks were received.
-	select {
-	case <-acksCh2:
-	case <-time.After(10 * time.Second):
-		t.Fatal("Did not receive all expected acks")
 	}
 
 	// Wait to read the new messages.
@@ -231,6 +194,65 @@ func TestClientSubscribe(t *testing.T) {
 	case <-ch2:
 	case <-time.After(10 * time.Second):
 		t.Fatal("Did not receive all expected messages")
+	}
+}
+
+// Ensure an error isn't returned on the stream when the client is closed.
+func TestClientCloseNoError(t *testing.T) {
+	defer cleanupStorage(t)
+
+	// Use a central NATS server.
+	ns := natsdTest.RunDefaultServer()
+	defer ns.Shutdown()
+
+	config := getTestConfig("a", true, 5050)
+	s := runServerWithConfig(t, config)
+	defer s.Stop()
+
+	client, err := Connect([]string{"localhost:5050"})
+	require.NoError(t, err)
+	time.Sleep(2 * time.Second)
+
+	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
+
+	err = client.Subscribe(context.Background(), "foo", "bar", func(msg *proto.Message, err error) {
+		require.NoError(t, err)
+	})
+	require.NoError(t, err)
+	client.Close()
+}
+
+// Ensure an error is returned on the stream when the client is disconnected
+// and reconnect is disabled.
+func TestClientDisconnectError(t *testing.T) {
+	defer cleanupStorage(t)
+
+	// Use a central NATS server.
+	ns := natsdTest.RunDefaultServer()
+	defer ns.Shutdown()
+
+	config := getTestConfig("a", true, 5050)
+	s := runServerWithConfig(t, config)
+	defer s.Stop()
+
+	client, err := Connect([]string{"localhost:5050"}, ResubscribeWaitTime(0))
+	require.NoError(t, err)
+	time.Sleep(2 * time.Second)
+
+	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
+
+	ch := make(chan error)
+	err = client.Subscribe(context.Background(), "foo", "bar", func(msg *proto.Message, err error) {
+		ch <- err
+	})
+
+	s.Stop()
+
+	select {
+	case err := <-ch:
+		require.Error(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("Did not receive expected error")
 	}
 }
 
@@ -279,28 +301,7 @@ func TestClientResubscribe(t *testing.T) {
 	name := "bar"
 	require.NoError(t, c.CreateStream(context.Background(), subject, name, ReplicationFactor(3)))
 
-	nc, err := nats.GetDefaultOptions().Connect()
-	require.NoError(t, err)
-	defer nc.Close()
-
-	ackInbox := "acks"
-	acked := 0
 	count := 5
-	acksCh1 := make(chan struct{})
-	acksCh2 := make(chan struct{})
-	_, err = nc.Subscribe(ackInbox, func(m *nats.Msg) {
-		_, err := UnmarshalAck(m.Data)
-		require.NoError(t, err)
-		acked++
-		if acked == count {
-			close(acksCh1)
-		}
-		if acked == 2*count {
-			close(acksCh2)
-		}
-	})
-	require.NoError(t, err)
-
 	expected := make([]*message, count)
 	for i := 0; i < count; i++ {
 		expected[i] = &message{
@@ -311,28 +312,17 @@ func TestClientResubscribe(t *testing.T) {
 	}
 
 	for i := 0; i < count; i++ {
-		err = nc.Publish("foo", NewMessage(expected[i].Value,
-			Key(expected[i].Key),
-			AckInbox(ackInbox),
-			AckPolicyAll(),
-		))
+		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+		_, err := c.Publish(ctx, "foo", expected[i].Value,
+			Key(expected[i].Key), AckPolicyAll())
 		require.NoError(t, err)
 	}
 
-	// Ensure all acks were received.
-	select {
-	case <-acksCh1:
-	case <-time.After(10 * time.Second):
-		t.Fatal("Did not receive all expected acks")
-	}
-
 	// Subscribe from the beginning.
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
 	recv := 0
 	ch1 := make(chan struct{})
 	ch2 := make(chan struct{})
-	err = c.Subscribe(ctx, "foo", "bar", func(msg *proto.Message, err error) {
+	err = c.Subscribe(context.Background(), "foo", "bar", func(msg *proto.Message, err error) {
 		require.NoError(t, err)
 		expect := expected[recv]
 		assertMsg(t, expect, msg)
@@ -343,7 +333,6 @@ func TestClientResubscribe(t *testing.T) {
 		}
 		if recv == 2*count {
 			close(ch2)
-			cancel()
 			return
 		}
 	}, StartAtEarliestReceived())
@@ -377,19 +366,10 @@ func TestClientResubscribe(t *testing.T) {
 	}
 
 	for i := 0; i < count; i++ {
-		err = nc.Publish("foo", NewMessage(expected[i+count].Value,
-			Key(expected[i+count].Key),
-			AckInbox(ackInbox),
-			AckPolicyAll(),
-		))
+		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+		_, err := c.Publish(ctx, "foo", expected[i+count].Value,
+			Key(expected[i+count].Key), AckPolicyAll())
 		require.NoError(t, err)
-	}
-
-	// Ensure all acks were received.
-	select {
-	case <-acksCh2:
-	case <-time.After(10 * time.Second):
-		t.Fatal("Did not receive all expected acks")
 	}
 
 	// Wait to read the new messages.
@@ -477,18 +457,15 @@ func TestClientPublishAck(t *testing.T) {
 	}
 
 	// Subscribe from the beginning.
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
 	recv := 0
 	ch := make(chan struct{})
-	err = client.Subscribe(ctx, "foo", "bar", func(msg *proto.Message, err error) {
+	err = client.Subscribe(context.Background(), "foo", "bar", func(msg *proto.Message, err error) {
 		require.NoError(t, err)
 		expect := expected[recv]
 		assertMsg(t, expect, msg)
 		recv++
 		if recv == count {
 			close(ch)
-			cancel()
 			return
 		}
 	}, StartAtEarliestReceived())
@@ -540,18 +517,15 @@ func TestClientPublishNoAck(t *testing.T) {
 	}
 
 	// Subscribe from the beginning.
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
 	recv := 0
 	ch := make(chan struct{})
-	err = client.Subscribe(ctx, "foo", "bar", func(msg *proto.Message, err error) {
+	err = client.Subscribe(context.Background(), "foo", "bar", func(msg *proto.Message, err error) {
 		require.NoError(t, err)
 		expect := expected[recv]
 		assertMsg(t, expect, msg)
 		recv++
 		if recv == count {
 			close(ch)
-			cancel()
 			return
 		}
 	}, StartAtEarliestReceived())
@@ -593,12 +567,9 @@ func TestClientPublishHeaders(t *testing.T) {
 
 	// Subscribe from the beginning.
 	ch := make(chan *proto.Message)
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
-	err = client.Subscribe(ctx, "foo", "bar", func(msg *proto.Message, err error) {
+	err = client.Subscribe(context.Background(), "foo", "bar", func(msg *proto.Message, err error) {
 		require.NoError(t, err)
 		ch <- msg
-		cancel()
 	}, StartAtEarliestReceived())
 	require.NoError(t, err)
 
