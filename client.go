@@ -567,7 +567,7 @@ func (c *client) Subscribe(ctx context.Context, subject, name string, handler Ha
 func (c *client) Publish(ctx context.Context, subject string, value []byte,
 	options ...MessageOption) (*proto.Ack, error) {
 
-	opts := &MessageOptions{}
+	opts := &MessageOptions{Headers: make(map[string][]byte)}
 	for _, opt := range options {
 		opt(opts)
 	}

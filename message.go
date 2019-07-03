@@ -30,6 +30,9 @@ type MessageOptions struct {
 	// default, Liftbridge will send an ack when the stream leader has written
 	// the Message to its write-ahead log.
 	AckPolicy proto.AckPolicy
+
+	// Headers are key-value pairs to set on the Message.
+	Headers map[string][]byte
 }
 
 // MessageOption is a function on the MessageOptions for a Message. These are
@@ -62,15 +65,6 @@ func CorrelationID(correlationID string) MessageOption {
 	}
 }
 
-// AckPolicy is a MessageOption that controls the behavior of Message acks sent
-// by the server. By default, Liftbridge will send an ack when the stream
-// leader has written the Message to its write-ahead log.
-func AckPolicy(ackPolicy proto.AckPolicy) MessageOption {
-	return func(o *MessageOptions) {
-		o.AckPolicy = ackPolicy
-	}
-}
-
 // AckPolicyLeader is a MessageOption that sets the AckPolicy of the Message to
 // LEADER. This means the Message ack will be sent when the stream leader has
 // written it to its write-ahead log.
@@ -97,9 +91,27 @@ func AckPolicyNone() MessageOption {
 	}
 }
 
+// Header is a MessageOption that adds a single header to the Message. This may
+// overwrite previously set headers.
+func Header(name string, value []byte) MessageOption {
+	return func(o *MessageOptions) {
+		o.Headers[name] = value
+	}
+}
+
+// Headers is a MessageOption that adds a set of headers to the Message. This
+// may overwrite previously set headers.
+func Headers(headers map[string][]byte) MessageOption {
+	return func(o *MessageOptions) {
+		for name, value := range headers {
+			o.Headers[name] = value
+		}
+	}
+}
+
 // NewMessage returns a serialized message for the given payload and options.
 func NewMessage(value []byte, options ...MessageOption) []byte {
-	opts := &MessageOptions{}
+	opts := &MessageOptions{Headers: make(map[string][]byte)}
 	for _, opt := range options {
 		opt(opts)
 	}
