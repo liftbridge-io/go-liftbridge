@@ -126,7 +126,9 @@ func TestClientSubscribe(t *testing.T) {
 	client, err := Connect([]string{"localhost:5050"})
 	require.NoError(t, err)
 	defer client.Close()
-	time.Sleep(2 * time.Second)
+
+	// Wait for server to elect itself leader.
+	getMetadataLeader(t, 10*time.Second, s)
 
 	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
 
@@ -211,7 +213,9 @@ func TestClientCloseNoError(t *testing.T) {
 
 	client, err := Connect([]string{"localhost:5050"})
 	require.NoError(t, err)
-	time.Sleep(2 * time.Second)
+
+	// Wait for server to elect itself leader.
+	getMetadataLeader(t, 10*time.Second, s)
 
 	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
 
@@ -237,7 +241,9 @@ func TestClientDisconnectError(t *testing.T) {
 
 	client, err := Connect([]string{"localhost:5050"}, ResubscribeWaitTime(0))
 	require.NoError(t, err)
-	time.Sleep(2 * time.Second)
+
+	// Wait for server to elect itself leader.
+	getMetadataLeader(t, 10*time.Second, s)
 
 	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
 
@@ -295,7 +301,9 @@ func TestClientResubscribe(t *testing.T) {
 	c, err := Connect([]string{"localhost:5050", "localhost:5051", "localhost:5052"})
 	require.NoError(t, err)
 	defer c.Close()
-	time.Sleep(2 * time.Second)
+
+	// Wait for leader to be elected.
+	getMetadataLeader(t, 10*time.Second, s1, s2, s3)
 
 	subject := "foo"
 	name := "bar"
@@ -396,7 +404,9 @@ func TestClientResubscribeFail(t *testing.T) {
 	client, err := Connect([]string{"localhost:5050"}, ResubscribeWaitTime(time.Millisecond))
 	require.NoError(t, err)
 	defer client.Close()
-	time.Sleep(2 * time.Second)
+
+	// Wait for server to elect itself leader.
+	getMetadataLeader(t, 10*time.Second, s)
 
 	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
 
@@ -432,7 +442,9 @@ func TestClientPublishAck(t *testing.T) {
 	client, err := Connect([]string{"localhost:5050"})
 	require.NoError(t, err)
 	defer client.Close()
-	time.Sleep(2 * time.Second)
+
+	// Wait for server to elect itself leader.
+	getMetadataLeader(t, 10*time.Second, s)
 
 	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
 
@@ -495,7 +507,9 @@ func TestClientPublishNoAck(t *testing.T) {
 	client, err := Connect([]string{"localhost:5050"})
 	require.NoError(t, err)
 	defer client.Close()
-	time.Sleep(2 * time.Second)
+
+	// Wait for server to elect itself leader.
+	getMetadataLeader(t, 10*time.Second, s)
 
 	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
 
@@ -554,7 +568,9 @@ func TestClientPublishHeaders(t *testing.T) {
 	client, err := Connect([]string{"localhost:5050"})
 	require.NoError(t, err)
 	defer client.Close()
-	time.Sleep(2 * time.Second)
+
+	// Wait for server to elect itself leader.
+	getMetadataLeader(t, 10*time.Second, s)
 
 	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
 

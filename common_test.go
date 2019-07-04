@@ -4,6 +4,10 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"testing"
+	"time"
+
+	"github.com/liftbridge-io/liftbridge/server"
 )
 
 // Used by both testing.B and testing.T so need to use
@@ -29,4 +33,32 @@ func stackFatalf(t tLogger, f string, args ...interface{}) {
 	}
 
 	t.Fatalf("%s", strings.Join(lines, "\n"))
+}
+
+func getMetadataLeader(t *testing.T, timeout time.Duration, servers ...*server.Server) *server.Server {
+	var (
+		leader   *server.Server
+		deadline = time.Now().Add(timeout)
+	)
+	for time.Now().Before(deadline) {
+		for _, s := range servers {
+			if !s.IsRunning() {
+				continue
+			}
+			if s.IsLeader() {
+				if leader != nil {
+					stackFatalf(t, "Found more than one metadata leader")
+				}
+				leader = s
+			}
+		}
+		if leader != nil {
+			break
+		}
+		time.Sleep(15 * time.Millisecond)
+	}
+	if leader == nil {
+		stackFatalf(t, "No metadata leader found")
+	}
+	return leader
 }
