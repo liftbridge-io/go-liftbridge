@@ -264,6 +264,7 @@ func TestClientDisconnectError(t *testing.T) {
 
 // Ensure the client resubscribes to the stream if the stream leader fails
 // over.
+// TODO: Make this test less flaky.
 func TestClientResubscribe(t *testing.T) {
 	defer cleanupStorage(t)
 
