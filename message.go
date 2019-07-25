@@ -2,14 +2,73 @@ package liftbridge
 
 import (
 	"bytes"
+	"hash/crc32"
+	"sync"
 
 	"github.com/liftbridge-io/go-liftbridge/liftbridge-grpc"
 )
 
 var (
-	envelopeCookie    = []byte("LIFT")
-	envelopeCookieLen = len(envelopeCookie)
+	envelopeCookie        = []byte("LIFT")
+	envelopeCookieLen     = len(envelopeCookie)
+	partitionByKey        = new(keyPartitioner)
+	partitionByRoundRobin = newRoundRobinPartitioner()
 )
+
+// Partitioner is used to map a message to a stream partition.
+type Partitioner interface {
+	// Partition computes the partition number for a given message.
+	Partition(msg *proto.Message, partitions int32) int32
+}
+
+// keyPartitioner is an implementation of Partitioner which partitions messages
+// based on a hash of the key.
+type keyPartitioner struct{}
+
+// Partition computes the partition number for a given message by hashing the
+// key.
+func (k *keyPartitioner) Partition(msg *proto.Message, partitions int32) int32 {
+	key := msg.Key
+	if key == nil {
+		key = []byte("")
+	}
+	return int32(crc32.ChecksumIEEE(key)) % partitions
+}
+
+type subjectCounter struct {
+	sync.Mutex
+	count int32
+}
+
+// roundRobinPartitioner is an implementation of Partitioner which partitions
+// messages in a round-robin fashion.
+type roundRobinPartitioner struct {
+	sync.Mutex
+	subjectCounterMap map[string]*subjectCounter
+}
+
+func newRoundRobinPartitioner() Partitioner {
+	return &roundRobinPartitioner{
+		subjectCounterMap: make(map[string]*subjectCounter),
+	}
+}
+
+// Partition computes the partition number for a given message in a round-robin
+// fashion.
+func (r *roundRobinPartitioner) Partition(msg *proto.Message, partitions int32) int32 {
+	r.Lock()
+	counter, ok := r.subjectCounterMap[msg.Subject]
+	if !ok {
+		counter = new(subjectCounter)
+		r.subjectCounterMap[msg.Subject] = counter
+	}
+	r.Unlock()
+	counter.Lock()
+	count := counter.count
+	counter.count++
+	counter.Unlock()
+	return count % partitions
+}
 
 // MessageOptions are used to configure optional settings for a Message.
 type MessageOptions struct {
@@ -33,6 +92,15 @@ type MessageOptions struct {
 
 	// Headers are key-value pairs to set on the Message.
 	Headers map[string][]byte
+
+	// Partitioner specifies the strategy for mapping a Message to a stream
+	// partition.
+	Partitioner Partitioner
+
+	// Partition specifies the stream partition to publish the Message to. If
+	// this is set, any Partitioner will not be used. This is a pointer to
+	// allow distinguishing between unset and 0.
+	Partition *int32
 }
 
 // MessageOption is a function on the MessageOptions for a Message. These are
@@ -107,6 +175,34 @@ func Headers(headers map[string][]byte) MessageOption {
 			o.Headers[name] = value
 		}
 	}
+}
+
+// ToPartition is a MessageOption that specifies the stream partition to
+// publish the Message to. If this is set, any Partitioner will not be used.
+func ToPartition(partition int32) MessageOption {
+	return func(o *MessageOptions) {
+		o.Partition = &partition
+	}
+}
+
+// PartitionBy is a MessageOption that specifies a Partitioner used to map
+// Messages to stream partitions.
+func PartitionBy(partitioner Partitioner) MessageOption {
+	return func(o *MessageOptions) {
+		o.Partitioner = partitioner
+	}
+}
+
+// PartitionByKey is a MessageOption that maps Messages to stream partitions
+// based on a hash of the Message key.
+func PartitionByKey() MessageOption {
+	return PartitionBy(partitionByKey)
+}
+
+// PartitionByRoundRobin is a MessageOption that maps Messages to stream
+// partitions in a round-robin fashion.
+func PartitionByRoundRobin() MessageOption {
+	return PartitionBy(partitionByRoundRobin)
 }
 
 // NewMessage returns a serialized message for the given payload and options.

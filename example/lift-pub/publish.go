@@ -23,6 +23,7 @@ func main() {
 	if err := client.CreateStream(
 		context.Background(), "bar", "bar-stream",
 		lift.MaxReplication(),
+		lift.Partitions(3),
 	); err != nil {
 		if err != lift.ErrStreamExists {
 			panic(err)

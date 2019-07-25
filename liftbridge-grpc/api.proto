@@ -8,6 +8,7 @@ message CreateStreamRequest {
     string name              = 2; // Stream name (unique per subject)
     string group             = 3; // Partitions NATS subject amongst group members
     int32  replicationFactor = 4; // Number of stream replicas
+    int32  partitions        = 5; // Number of stream partitions
 }
 
 // CreateStreamResponse is sent by server after creating a stream.
@@ -28,9 +29,10 @@ enum StartPosition {
 message SubscribeRequest {
     string        subject        = 1; // Stream NATS subject to subscribe to
     string        name           = 2; // Stream name to subscribe to
-    StartPosition startPosition  = 3; // Where to begin consuming from
-    int64         startOffset    = 4; // Offset to begin consuming from
-    int64         startTimestamp = 5; // Timestamp to begin consuming from
+    int32         partition      = 3; // Stream partition to subscribe to
+    StartPosition startPosition  = 4; // Where to begin consuming from
+    int64         startOffset    = 5; // Offset to begin consuming from
+    int64         startTimestamp = 6; // Timestamp to begin consuming from
 }
 
 // FetchMetadataRequest is sent to retrieve the latest cluster metadata.
@@ -73,11 +75,17 @@ message StreamMetadata {
         OK             = 0;
         UNKNOWN_STREAM = 1;
     }
-    StreamDescriptor stream   = 1; // The stream being described
-    Error            error    = 2; // Indicates if there was something wrong with the requested stream
-    string           leader   = 3; // Broker id of the stream leader
-    repeated string  replicas = 4; // Broker ids of the stream replicas
-    repeated string  isr      = 5; // Broker ids of the in-sync replica set
+    StreamDescriptor              stream     = 1; // The stream being described
+    Error                         error      = 2; // Indicates if there was something wrong with the requested stream
+    map<int32, PartitionMetadata> partitions = 3; // Information for the stream partitions
+}
+
+// PartitionMetadata contains information for a stream partition.
+message PartitionMetadata {
+    int32            id       = 1; // Partition id
+    string           leader   = 2; // Broker id of the partition leader
+    repeated string  replicas = 3; // Broker ids of the partition replicas
+    repeated string  isr      = 4; // Broker ids of the in-sync replica set
 }
 
 // AckPolicy controls the behavior of message acknowledgements.
