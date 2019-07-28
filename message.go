@@ -13,12 +13,13 @@ var (
 	envelopeCookieLen     = len(envelopeCookie)
 	partitionByKey        = new(keyPartitioner)
 	partitionByRoundRobin = newRoundRobinPartitioner()
+	hasher                = crc32.ChecksumIEEE
 )
 
 // Partitioner is used to map a message to a stream partition.
 type Partitioner interface {
 	// Partition computes the partition number for a given message.
-	Partition(msg *proto.Message, partitions int32) int32
+	Partition(msg *proto.Message, metadata *Metadata) int32
 }
 
 // keyPartitioner is an implementation of Partitioner which partitions messages
@@ -26,13 +27,23 @@ type Partitioner interface {
 type keyPartitioner struct{}
 
 // Partition computes the partition number for a given message by hashing the
-// key.
-func (k *keyPartitioner) Partition(msg *proto.Message, partitions int32) int32 {
+// key and modding by the number of partitions for the first stream found with
+// the subject of the message. This does not work with streams containing
+// wildcards in their subjects, e.g. "foo.*", since this matches on the subject
+// literal of the published message. This also has undefined behavior if there
+// are multiple streams for the given subject.
+func (k *keyPartitioner) Partition(msg *proto.Message, metadata *Metadata) int32 {
 	key := msg.Key
 	if key == nil {
 		key = []byte("")
 	}
-	return int32(crc32.ChecksumIEEE(key)) % partitions
+
+	partitions := getPartitionCount(msg.Subject, metadata)
+	if partitions == 0 {
+		return 0
+	}
+
+	return int32(hasher(key)) % partitions
 }
 
 type subjectCounter struct {
@@ -54,8 +65,17 @@ func newRoundRobinPartitioner() Partitioner {
 }
 
 // Partition computes the partition number for a given message in a round-robin
-// fashion.
-func (r *roundRobinPartitioner) Partition(msg *proto.Message, partitions int32) int32 {
+// fashion by atomically incrementing a counter for the message subject and
+// modding by the number of partitions for the first stream found with the
+// subject. This does not work with streams containing wildcards in their
+// subjects, e.g. "foo.*", since this matches on the subject literal of the
+// published message. This also has undefined behavior if there are multiple
+// streams for the given subject.
+func (r *roundRobinPartitioner) Partition(msg *proto.Message, metadata *Metadata) int32 {
+	partitions := getPartitionCount(msg.Subject, metadata)
+	if partitions == 0 {
+		return 0
+	}
 	r.Lock()
 	counter, ok := r.subjectCounterMap[msg.Subject]
 	if !ok {
@@ -68,6 +88,17 @@ func (r *roundRobinPartitioner) Partition(msg *proto.Message, partitions int32) 
 	counter.count++
 	counter.Unlock()
 	return count % partitions
+}
+
+func getPartitionCount(subject string, metadata *Metadata) int32 {
+	counts := metadata.PartitionCountsForSubject(subject)
+
+	// Get the first matching stream's count.
+	for _, count := range counts {
+		return count
+	}
+
+	return 0
 }
 
 // MessageOptions are used to configure optional settings for a Message.
@@ -194,13 +225,25 @@ func PartitionBy(partitioner Partitioner) MessageOption {
 }
 
 // PartitionByKey is a MessageOption that maps Messages to stream partitions
-// based on a hash of the Message key.
+// based on a hash of the Message key. This computes the partition number for a
+// given message by hashing the key and modding by the number of partitions for
+// the first stream found with the subject of the published message. This does
+// not work with streams containing wildcards in their subjects, e.g. "foo.*",
+// since this matches on the subject literal of the published message. This
+// also has undefined behavior if there are multiple streams for the given
+// subject.
 func PartitionByKey() MessageOption {
 	return PartitionBy(partitionByKey)
 }
 
 // PartitionByRoundRobin is a MessageOption that maps Messages to stream
-// partitions in a round-robin fashion.
+// partitions in a round-robin fashion. This computes the partition number for
+// a given message by atomically incrementing a counter for the message subject
+// and modding by the number of partitions for the first stream found with the
+// subject. This does not work with streams containing wildcards in their
+// subjects, e.g. "foo.*", since this matches on the subject literal of the
+// published message. This also has undefined behavior if there are multiple
+// streams for the given subject.
 func PartitionByRoundRobin() MessageOption {
 	return PartitionBy(partitionByRoundRobin)
 }

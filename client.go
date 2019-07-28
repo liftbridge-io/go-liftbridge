@@ -238,7 +238,7 @@ func (o ClientOptions) Connect() (Client, error) {
 		dialOpts:  opts,
 	}
 	c.metadata = newMetadataCache(o.Brokers, c.doResilientRPC)
-	if err := c.metadata.update(); err != nil {
+	if _, err := c.metadata.update(); err != nil {
 		return nil, err
 	}
 	return c, nil
@@ -487,25 +487,65 @@ func (c *client) Publish(ctx context.Context, subject string, value []byte,
 		opt(opts)
 	}
 
-	req := &proto.PublishRequest{Message: &proto.Message{
+	msg := &proto.Message{
 		Subject:       subject,
 		Key:           opts.Key,
 		Value:         value,
 		AckInbox:      opts.AckInbox,
 		CorrelationId: opts.CorrelationID,
 		AckPolicy:     opts.AckPolicy,
-	}}
+	}
+
+	partition, err := c.partition(msg, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	// Publish to the appropriate partition subject.
+	if partition > 0 {
+		msg.Subject = fmt.Sprintf("%s.%d", msg.Subject, partition)
+	}
+
 	var (
+		req = &proto.PublishRequest{Message: msg}
 		ack *proto.Ack
-		err = c.doResilientRPC(func(client proto.APIClient) error {
-			resp, err := client.Publish(ctx, req)
-			if err == nil {
-				ack = resp.Ack
-			}
-			return err
-		})
 	)
+	err = c.doResilientRPC(func(client proto.APIClient) error {
+		resp, err := client.Publish(ctx, req)
+		if err == nil {
+			ack = resp.Ack
+		}
+		return err
+	})
 	return ack, err
+}
+
+func (c *client) partition(msg *proto.Message, opts *MessageOptions) (int32, error) {
+	var partition int32
+	// If a partition is explicitly provided, use it.
+	if opts.Partition != nil {
+		partition = *opts.Partition
+	} else if opts.Partitioner != nil {
+		// Make sure we have metadata for the stream and, if not, update it.
+		metadata, err := c.waitForSubjectMetadata(msg.Subject)
+		if err != nil {
+			return 0, err
+		}
+		partition = opts.Partitioner.Partition(msg, metadata)
+	}
+	return partition, nil
+}
+
+func (c *client) waitForSubjectMetadata(subject string) (*Metadata, error) {
+	for i := 0; i < 5; i++ {
+		metadata := c.metadata.get()
+		if metadata.hasSubjectMetadata(subject) {
+			return metadata, nil
+		}
+		time.Sleep(50 * time.Millisecond)
+		c.metadata.update()
+	}
+	return nil, fmt.Errorf("no metadata for stream with subject %s", subject)
 }
 
 func (c *client) subscribe(ctx context.Context, subject, name string,
@@ -538,6 +578,7 @@ func (c *client) subscribe(ctx context.Context, subject, name string,
 				StartPosition:  opts.StartPosition,
 				StartOffset:    opts.StartOffset,
 				StartTimestamp: opts.StartTimestamp.UnixNano(),
+				Partition:      opts.Partition,
 			}
 		)
 		stream, err = client.Subscribe(ctx, req)
