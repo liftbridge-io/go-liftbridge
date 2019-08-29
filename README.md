@@ -52,6 +52,11 @@ func main() {
 			panic(err)
 		}
 	}
+	
+	// Publish a message to "foo".
+	if _, err := client.Publish(context.Background(), "foo", []byte("hello")); err != nil {
+		panic(err)
+	}
 
 	// Subscribe to the stream starting from the beginning.
 	ctx := context.Background()
@@ -129,9 +134,45 @@ client.Subscribe(ctx, stream.Subject, stream.Name, func(msg *proto.Message, err 
 
 ### Publishing
 
-Since Liftbridge is simply an extension of
+A publish API is provided to make it easy to write messages to streams. This includes
+a number of options for decorating messages with metadata like a message key and
+headers as well as configuring acking behavior from the server.
+
+Keys are used by Liftbridge's log compaction. When enabled, Liftbridge streams will
+retain only the last message for a given key.
+
+```go
+// Publish a message with a key and header set.
+client.Publish(context.Background(), "foo", []byte("hello"),
+	lift.Key([]byte("key"),
+	lift.Header("foo", []byte("bar")),
+)
+```
+
+An `AckPolicy` tells the server when to send an ack. If a deadline is provided to
+`Publish`, it will block up to this amount of time waiting for the ack.
+
+```go
+ctx, _ := context.WithTimeout(context.Background(), 2*time.Second)
+client.Publish(ctx, "foo", []byte("hello"),
+	lift.AckPolicyAll(), // Wait for all stream replicas to get the message
+)
+
+ctx, _ = context.WithTimeout(context.Background(), 2*time.Second)
+client.Publish(ctx, "foo", []byte("hello"),
+	lift.AckPolicyLeader(), // Wait for just the stream leader to get the message
+)
+
+client.Publish(context.Background(), "foo", []byte("hello"),
+	lift.AckPolicyNone(), // Don't send an ack
+)
+```
+
+#### Publishing Directly with NATS
+
+Since Liftbridge is an extension of
 [NATS](https://github.com/nats-io/gnatsd), a [NATS
-client](https://github.com/nats-io/go-nats) is used to publish messages. This
+client](https://github.com/nats-io/go-nats) can also be used to publish messages. This
 means existing NATS publishers do not need any changes for messages to be
 consumed in Liftbridge.
 
@@ -150,19 +191,22 @@ func main() {
 }
 ```
 
-Liftbridge allows publishers to add metadata to messages, including a key, ack
-inbox, correlation ID, and ack policy. The message key can be used for stream
-compaction in Liftbridge. Acks are used to guarantee Liftbridge has recorded a
-message to ensure at-least-once delivery. The ack inbox determines a NATS
-subject to publish an acknowledgement to once Liftbridge has committed the
-message. The correlation id is used to correlate an ack back to the original
-message. The ack policy determines when Liftbridge acknowledges the message:
+As shown with the `Publish` API above, Liftbridge allows publishers to add
+metadata to messages, including a key, ack inbox, correlation ID, and ack
+policy. The message key can be used for stream compaction in Liftbridge.
+Acks are used to guarantee Liftbridge has recorded a message to ensure
+at-least-once delivery. The ack inbox determines a NATS subject to publish
+an acknowledgement to once Liftbridge has committed the message. The
+correlation id is used to correlate an ack back to the original message.
+The ack policy determines when Liftbridge acknowledges the message:
 when the stream leader has stored the message, when all replicas have stored
 it, or no ack at all.
 
 This additional metadata is sent using a message envelope which is a
-[protobuf](https://github.com/liftbridge-io/liftbridge-grpc). This client
-library provides APIs to make it easy to create envelopes and deal with acks.
+[protobuf](https://github.com/liftbridge-io/liftbridge-grpc). The `Publish`
+API handles this for you, but this client library also provides APIs to make
+it easy to create envelopes and deal with acks yourself using a NATS client
+directly.
 
 ```go
 var (
