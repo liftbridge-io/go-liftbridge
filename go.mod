@@ -13,6 +13,7 @@ require (
 	github.com/hashicorp/go-uuid v1.0.1 // indirect
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
 	github.com/liftbridge-io/liftbridge v0.0.0-20190704001405-928a9d17c609
+	github.com/liftbridge-io/liftbridge-grpc v0.0.0-20190829220806-66e3ee4b7943
 	github.com/nats-io/gnatsd v1.4.1 // indirect
 	github.com/nats-io/jwt v0.2.8 // indirect
 	github.com/nats-io/nats-server v1.4.1

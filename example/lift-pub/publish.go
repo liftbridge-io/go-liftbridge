@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"strconv"
 	"time"
 
@@ -11,6 +12,8 @@ import (
 )
 
 const count = 5
+
+var keys = [][]byte{[]byte("foo"), []byte("bar"), []byte("baz"), []byte("qux")}
 
 func main() {
 	addr := "localhost:9292"
@@ -23,7 +26,7 @@ func main() {
 	if err := client.CreateStream(
 		context.Background(), "bar", "bar-stream",
 		lift.MaxReplication(),
-		lift.Partitions(3),
+		lift.Partitions(5),
 	); err != nil {
 		if err != lift.ErrStreamExists {
 			panic(err)
@@ -37,7 +40,9 @@ func main() {
 		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 		if _, err := client.Publish(ctx, "bar",
 			[]byte(strconv.FormatInt(int64(i), 10)),
-			lift.Key([]byte("test")), lift.AckPolicyAll(),
+			lift.Key(keys[rand.Intn(len(keys))]),
+			lift.PartitionByKey(),
+			lift.AckPolicyAll(),
 		); err != nil {
 			panic(err)
 		}

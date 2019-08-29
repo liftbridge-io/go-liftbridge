@@ -1,5 +1,3 @@
-//go:generate protoc --gofast_out=plugins=grpc:. ./liftbridge-grpc/api.proto
-
 // Package liftbridge implements a client for the Liftbridge messaging system.
 // Liftbridge provides lightweight, fault-tolerant message streams by
 // implementing a durable stream augmentation NATS. In particular, it offers a
@@ -23,7 +21,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 
-	"github.com/liftbridge-io/go-liftbridge/liftbridge-grpc"
+	"github.com/liftbridge-io/liftbridge-grpc/go"
 )
 
 // MaxReplicationFactor can be used to tell the server to set the replication
@@ -141,7 +139,7 @@ type Client interface {
 	// start position is the end of the stream. It returns an ErrNoSuchStream
 	// if the given stream does not exist. Use a cancelable Context to close a
 	// subscription.
-	Subscribe(ctx context.Context, subject, name string, handler Handler, opts ...SubscriptionOption) error
+	Subscribe(ctx context.Context, stream string, handler Handler, opts ...SubscriptionOption) error
 
 	// Publish publishes a new message to the NATS subject. If the AckPolicy is
 	// not NONE and a deadline is provided, this will synchronously block until
@@ -455,7 +453,7 @@ func Partition(partition int32) SubscriptionOption {
 // messages when it reaches the end of the stream. The default start position
 // is the end of the stream. It returns an ErrNoSuchStream if the given stream
 // does not exist. Use a cancelable Context to close a subscription.
-func (c *client) Subscribe(ctx context.Context, subject, name string, handler Handler,
+func (c *client) Subscribe(ctx context.Context, streamName string, handler Handler,
 	options ...SubscriptionOption) (err error) {
 
 	opts := &SubscriptionOptions{}
@@ -465,12 +463,12 @@ func (c *client) Subscribe(ctx context.Context, subject, name string, handler Ha
 		}
 	}
 
-	stream, releaseConn, err := c.subscribe(ctx, subject, name, opts)
+	stream, releaseConn, err := c.subscribe(ctx, streamName, opts)
 	if err != nil {
 		return err
 	}
 
-	go c.dispatchStream(ctx, subject, name, stream, releaseConn, handler)
+	go c.dispatchStream(ctx, streamName, stream, releaseConn, handler)
 	return nil
 }
 
@@ -548,17 +546,17 @@ func (c *client) waitForSubjectMetadata(subject string) (*Metadata, error) {
 	return nil, fmt.Errorf("no metadata for stream with subject %s", subject)
 }
 
-func (c *client) subscribe(ctx context.Context, subject, name string,
+func (c *client) subscribe(ctx context.Context, stream string,
 	opts *SubscriptionOptions) (proto.API_SubscribeClient, func(), error) {
 	var (
-		pool   *connPool
-		addr   string
-		conn   *grpc.ClientConn
-		stream proto.API_SubscribeClient
-		err    error
+		pool *connPool
+		addr string
+		conn *grpc.ClientConn
+		st   proto.API_SubscribeClient
+		err  error
 	)
 	for i := 0; i < 5; i++ {
-		pool, addr, err = c.getPoolAndAddr(subject, name, opts.Partition)
+		pool, addr, err = c.getPoolAndAddr(stream, opts.Partition)
 		if err != nil {
 			time.Sleep(50 * time.Millisecond)
 			c.metadata.update()
@@ -573,15 +571,14 @@ func (c *client) subscribe(ctx context.Context, subject, name string,
 		var (
 			client = proto.NewAPIClient(conn)
 			req    = &proto.SubscribeRequest{
-				Subject:        subject,
-				Name:           name,
+				Stream:         stream,
 				StartPosition:  opts.StartPosition,
 				StartOffset:    opts.StartOffset,
 				StartTimestamp: opts.StartTimestamp.UnixNano(),
 				Partition:      opts.Partition,
 			}
 		)
-		stream, err = client.Subscribe(ctx, req)
+		st, err = client.Subscribe(ctx, req)
 		if err != nil {
 			if status.Code(err) == codes.Unavailable {
 				time.Sleep(50 * time.Millisecond)
@@ -593,7 +590,7 @@ func (c *client) subscribe(ctx context.Context, subject, name string,
 
 		// The server will either send an empty message, indicating the
 		// subscription was successfully created, or an error.
-		_, err = stream.Recv()
+		_, err = st.Recv()
 		if status.Code(err) == codes.FailedPrecondition {
 			// This indicates the server was not the stream leader. Refresh
 			// metadata and retry after waiting a bit.
@@ -607,12 +604,12 @@ func (c *client) subscribe(ctx context.Context, subject, name string,
 			}
 			return nil, nil, err
 		}
-		return stream, func() { pool.put(conn) }, nil
+		return st, func() { pool.put(conn) }, nil
 	}
 	return nil, nil, err
 }
 
-func (c *client) dispatchStream(ctx context.Context, subject, name string,
+func (c *client) dispatchStream(ctx context.Context, streamName string,
 	stream proto.API_SubscribeClient, releaseConn func(), handler Handler) {
 
 	defer releaseConn()
@@ -660,7 +657,7 @@ func (c *client) dispatchStream(ctx context.Context, subject, name string,
 	if resubscribe {
 		deadline := time.Now().Add(c.opts.ResubscribeWaitTime)
 		for time.Now().Before(deadline) && !closed {
-			err := c.Subscribe(ctx, subject, name, handler, StartAtOffset(lastOffset+1))
+			err := c.Subscribe(ctx, streamName, handler, StartAtOffset(lastOffset+1))
 			if err == nil {
 				return
 			}
@@ -683,8 +680,8 @@ func (c *client) connFactory(addr string) connFactory {
 
 // getPoolAndAddr returns the connPool and broker address for the given
 // partition.
-func (c *client) getPoolAndAddr(subject, name string, partition int32) (*connPool, string, error) {
-	addr, err := c.metadata.getAddr(subject, name, partition)
+func (c *client) getPoolAndAddr(stream string, partition int32) (*connPool, string, error) {
+	addr, err := c.metadata.getAddr(stream, partition)
 	if err != nil {
 		return nil, "", err
 	}
@@ -705,7 +702,7 @@ func (c *client) doResilientRPC(rpc func(client proto.APIClient) error) (err err
 	client := c.apiClient
 	c.mu.RUnlock()
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 10; i++ {
 		err = rpc(client)
 		if status.Code(err) == codes.Unavailable {
 			conn, err := c.dialBroker()

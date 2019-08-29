@@ -8,29 +8,34 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/liftbridge-io/go-liftbridge/liftbridge-grpc"
+	"github.com/liftbridge-io/liftbridge-grpc/go"
 )
 
-// streamIndex maps a subject and stream name to a stream.
-type streamIndex map[string]map[string]*StreamInfo
+type streamIndex struct {
+	byName    map[string]*StreamInfo
+	bySubject map[string][]*StreamInfo
+}
+
+func newStreamIndex() *streamIndex {
+	return &streamIndex{
+		byName:    make(map[string]*StreamInfo),
+		bySubject: make(map[string][]*StreamInfo),
+	}
+}
 
 // addStream adds the given stream to the index.
 func (s streamIndex) addStream(stream *StreamInfo) {
-	streams, ok := s[stream.subject]
+	streams, ok := s.bySubject[stream.subject]
 	if !ok {
-		streams = make(map[string]*StreamInfo)
-		s[stream.subject] = streams
+		streams = []*StreamInfo{}
 	}
-	streams[stream.name] = stream
+	s.bySubject[stream.subject] = append(streams, stream)
+	s.byName[stream.name] = stream
 }
 
 // getStream returns the given stream or nil if it does not exist.
-func (s streamIndex) getStream(subject, name string) *StreamInfo {
-	streams, ok := s[subject]
-	if !ok {
-		return nil
-	}
-	return streams[name]
+func (s streamIndex) getStream(name string) *StreamInfo {
+	return s.byName[name]
 }
 
 // StreamInfo contains information for a Liftbridge stream.
@@ -113,13 +118,19 @@ func (b *BrokerInfo) Addr() string {
 type Metadata struct {
 	lastUpdated time.Time
 	brokers     map[string]*BrokerInfo
-	streams     streamIndex
+	addrs       map[string]struct{}
+	streams     *streamIndex
 }
 
-func newMetadata(brokers map[string]*BrokerInfo, streams streamIndex) *Metadata {
+func newMetadata(brokers map[string]*BrokerInfo, streams *streamIndex) *Metadata {
+	addrs := make(map[string]struct{}, len(brokers))
+	for _, broker := range brokers {
+		addrs[broker.Addr()] = struct{}{}
+	}
 	return &Metadata{
 		lastUpdated: time.Now(),
 		brokers:     brokers,
+		addrs:       addrs,
 		streams:     streams,
 	}
 }
@@ -143,20 +154,28 @@ func (m *Metadata) Brokers() []*BrokerInfo {
 	return brokers
 }
 
-// GetStream returns the given stream or nil if unknown.
-func (m *Metadata) GetStream(subject, name string) *StreamInfo {
-	return m.streams.getStream(subject, name)
+// Addrs returns the list of known broker addresses.
+func (m *Metadata) Addrs() []string {
+	var (
+		addrs = make([]string, len(m.addrs))
+		i     = 0
+	)
+	for addr := range m.addrs {
+		addrs[i] = addr
+		i++
+	}
+	return addrs
 }
 
-// GetStreams returns a map containing stream names and streams for all streams
-// with the given subject. This does not match on wildcard subjects, e.g.
-// "foo.*".
-func (m *Metadata) GetStreams(subject string) map[string]*StreamInfo {
-	streams := m.streams[subject]
-	if streams == nil {
-		streams = make(map[string]*StreamInfo)
-	}
-	return streams
+// GetStream returns the given stream or nil if unknown.
+func (m *Metadata) GetStream(name string) *StreamInfo {
+	return m.streams.getStream(name)
+}
+
+// GetStreams returns a map containing all streams with the given subject. This
+// does not match on wildcard subjects, e.g.  "foo.*".
+func (m *Metadata) GetStreams(subject string) []*StreamInfo {
+	return m.streams.bySubject[subject]
 }
 
 // PartitionCountsForSubject returns a map containing stream names and the
@@ -167,8 +186,8 @@ func (m *Metadata) PartitionCountsForSubject(subject string) map[string]int32 {
 		streams = m.GetStreams(subject)
 		counts  = make(map[string]int32, len(streams))
 	)
-	for name, stream := range streams {
-		counts[name] = int32(len(stream.Partitions()))
+	for _, stream := range streams {
+		counts[stream.name] = int32(len(stream.Partitions()))
 	}
 	return counts
 }
@@ -181,18 +200,17 @@ func (m *Metadata) hasSubjectMetadata(subject string) bool {
 }
 
 type metadataCache struct {
-	mu       sync.RWMutex
-	metadata *Metadata
-	doRPC    func(func(proto.APIClient) error) error
+	mu             sync.RWMutex
+	metadata       *Metadata
+	bootstrapAddrs []string
+	doRPC          func(func(proto.APIClient) error) error
 }
 
 func newMetadataCache(addrs []string, doRPC func(func(proto.APIClient) error) error) *metadataCache {
-	addrMap := make(map[string]struct{}, len(addrs))
-	for _, addr := range addrs {
-		addrMap[addr] = struct{}{}
-	}
 	return &metadataCache{
-		doRPC: doRPC,
+		metadata:       &Metadata{},
+		bootstrapAddrs: addrs,
+		doRPC:          doRPC,
 	}
 }
 
@@ -216,11 +234,11 @@ func (m *metadataCache) update() (*Metadata, error) {
 		}
 	}
 
-	streamIndex := make(streamIndex)
+	streamIndex := newStreamIndex()
 	for _, streamMetadata := range resp.Metadata {
 		stream := &StreamInfo{
-			subject:    streamMetadata.Stream.Subject,
-			name:       streamMetadata.Stream.Name,
+			subject:    streamMetadata.Subject,
+			name:       streamMetadata.Name,
 			partitions: make(map[int32]*PartitionInfo, len(streamMetadata.Partitions)),
 		}
 		for _, partition := range streamMetadata.Partitions {
@@ -229,7 +247,7 @@ func (m *metadataCache) update() (*Metadata, error) {
 				replicas[i] = brokers[replica]
 			}
 			isr := make([]*BrokerInfo, len(partition.Isr))
-			for i, replica := range partition.Replicas {
+			for i, replica := range partition.Isr {
 				isr[i] = brokers[replica]
 			}
 			stream.partitions[partition.Id] = &PartitionInfo{
@@ -254,25 +272,28 @@ func (m *metadataCache) update() (*Metadata, error) {
 // getAddrs returns a list of all broker addresses.
 func (m *metadataCache) getAddrs() []string {
 	m.mu.RLock()
-	metadata := m.metadata
+	var (
+		metadata       = m.metadata
+		bootstrapAddrs = m.bootstrapAddrs
+	)
 	m.mu.RUnlock()
-	addrs := make([]string, len(metadata.Brokers()))
-	for i, broker := range metadata.Brokers() {
-		addrs[i] = broker.Addr()
+	addrs := metadata.Addrs()
+	for _, addr := range bootstrapAddrs {
+		addrs = append(addrs, addr)
 	}
 	return addrs
 }
 
 // getAddr returns the broker address for the given stream partition.
-func (m *metadataCache) getAddr(subject, name string, partitionID int32) (string, error) {
+func (m *metadataCache) getAddr(stream string, partitionID int32) (string, error) {
 	m.mu.RLock()
 	metadata := m.metadata
 	m.mu.RUnlock()
-	stream := metadata.GetStream(subject, name)
-	if stream == nil {
+	st := metadata.GetStream(stream)
+	if st == nil {
 		return "", errors.New("no known stream")
 	}
-	partition := stream.GetPartition(partitionID)
+	partition := st.GetPartition(partitionID)
 	if partition == nil {
 		return "", errors.New("no known partition")
 	}
