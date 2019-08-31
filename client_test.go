@@ -822,7 +822,14 @@ func ExampleClient_createStream() {
 		panic(err)
 	}
 	defer client.Close()
+
+	// Create stream with a single partition.
 	if err := client.CreateStream(context.Background(), "foo", "foo-stream"); err != nil {
+		panic(err)
+	}
+
+	// Create stream with three partitions.
+	if err := client.CreateStream(context.Background(), "bar", "bar-stream", Partitions(3)); err != nil {
 		panic(err)
 	}
 }
@@ -836,9 +843,8 @@ func ExampleClient_subscribe() {
 	}
 	defer client.Close()
 
-	// Subscribe to stream.
-	ctx := context.Background()
-	if err := client.Subscribe(ctx, "bar-stream", func(msg *proto.Message, err error) {
+	// Subscribe to base stream partition.
+	if err := client.Subscribe(context.Background(), "foo-stream", func(msg *proto.Message, err error) {
 		if err != nil {
 			panic(err)
 		}
@@ -847,7 +853,40 @@ func ExampleClient_subscribe() {
 		panic(err)
 	}
 
+	// Subscribe to a specific stream partition.
+	ctx := context.Background()
+	if err := client.Subscribe(ctx, "bar-stream", func(msg *proto.Message, err error) {
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(msg.Offset, string(msg.Value))
+	}, Partition(1)); err != nil {
+		panic(err)
+	}
+
 	<-ctx.Done()
+}
+
+func ExampleClient_publish() {
+	// Connect to Liftbridge.
+	addr := "localhost:9292"
+	client, err := Connect([]string{addr})
+	if err != nil {
+		panic(err)
+	}
+	defer client.Close()
+
+	// Publish message to base stream partition.
+	if _, err := client.Publish(context.Background(), "foo", []byte("hello")); err != nil {
+		panic(err)
+	}
+
+	// Publish message to stream partition based on key.
+	if _, err := client.Publish(context.Background(), "bar", []byte("hello"),
+		Key([]byte("key")), PartitionByKey(),
+	); err != nil {
+		panic(err)
+	}
 }
 
 func ExampleNewMessage() {
