@@ -43,10 +43,10 @@ func main() {
 	defer client.Close()
 
 	// Create a stream attached to the NATS subject "foo".
-    var (
-        subject = "foo"
-        name    = "foo-stream"
-    )
+	var (
+        	subject = "foo"
+        	name    = "foo-stream"
+	)
 	if err := client.CreateStream(context.Background(), subject, name); err != nil {
 		if err != lift.ErrStreamExists {
 			panic(err)
@@ -103,32 +103,32 @@ Subscribe.
 ```go
 // Subscribe starting with new messages only.
 client.Subscribe(ctx, name, func(msg *proto.Message, err error) {
-    fmt.Println(msg.Offset, string(msg.Value))
+	fmt.Println(msg.Offset, string(msg.Value))
 })
 
 // Subscribe starting with the most recently published value.
 client.Subscribe(ctx, name, func(msg *proto.Message, err error) {
-    fmt.Println(msg.Offset, string(msg.Value))
+	fmt.Println(msg.Offset, string(msg.Value))
 }, lift.StartAtLatestReceived())
 
 // Subscribe starting with the oldest published value.
 client.Subscribe(ctx, name, func(msg *proto.Message, err error) {
-    fmt.Println(msg.Offset, string(msg.Value))
+	fmt.Println(msg.Offset, string(msg.Value))
 }, lift.StartAtEarliestReceived())
 
 // Subscribe starting at a specific offset.
 client.Subscribe(ctx, name, func(msg *proto.Message, err error) {
-    fmt.Println(msg.Offset, string(msg.Value))
+	fmt.Println(msg.Offset, string(msg.Value))
 }, lift.StartAtOffset(42))
 
 // Subscribe starting at a specific time.
 client.Subscribe(ctx, name, func(msg *proto.Message, err error) {
-    fmt.Println(msg.Offset, string(msg.Value))
+	fmt.Println(msg.Offset, string(msg.Value))
 }, lift.StartAtTime(time.Now()))
 
 // Subscribe starting at a specific amount of time in the past.
 client.Subscribe(ctx, name, func(msg *proto.Message, err error) {
-    fmt.Println(msg.Offset, string(msg.Value))
+	fmt.Println(msg.Offset, string(msg.Value))
 }, lift.StartAtTimeDelta(time.Minute))
 ```
 
@@ -182,12 +182,12 @@ package main
 import "github.com/nats-io/go-nats"
 
 func main() {
-    // Connect to NATS.
-    nc, _ := nats.Connect(nats.DefaultURL)
+	// Connect to NATS.
+	nc, _ := nats.Connect(nats.DefaultURL)
 
-    // Publish a message.
-    nc.Publish("foo.bar", []byte("Hello, world!")) 
-    nc.Flush()
+	// Publish a message.
+	nc.Publish("foo.bar", []byte("Hello, world!")) 
+	nc.Flush()
 }
 ```
 
@@ -210,16 +210,16 @@ directly.
 
 ```go
 var (
-    ackInbox = "foo.acks"
-    cid      = "some-random-id"
+	ackInbox = "foo.acks"
+	cid      = "some-random-id"
 )
 
 // Create a message envelope to publish.
 msg := lift.NewMessage([]byte("Hello, world!"),
-    lift.Key([]byte("foo")), // Key to set on the message
-    lift.AckInbox(ackInbox), // Send ack to this NATS subject
-    lift.AckPolicyAll(),     // Send ack once message is fully replicated
-    lift.CorrelationID(cid), // Set the ID which will be sent on the ack
+	lift.Key([]byte("foo")), // Key to set on the message
+	lift.AckInbox(ackInbox), // Send ack to this NATS subject
+	lift.AckPolicyAll(),     // Send ack once message is fully replicated
+	lift.CorrelationID(cid), // Set the ID which will be sent on the ack
 )
 
 // Setup a NATS subscription for acks.
@@ -232,7 +232,7 @@ nc.Publish("foo.bar", msg)
 resp, _ := sub.NextMsg(5*time.Second)
 ack, _ := lift.UnmarshalAck(resp.Data)
 if ack.CorrelationId == cid {
-    fmt.Println("message acked!")
+	fmt.Println("message acked!")
 }
 ```
 
@@ -262,20 +262,20 @@ configured by providing a `Partitioner`.
 ```go
 // Publish to partition based on message key hash.
 client.Publish(context.Background(), "bar", []byte("hello"),
-    lift.Key([]byte("key")),
-    lift.PartitionByKey(),
+	lift.Key([]byte("key")),
+	lift.PartitionByKey(),
 )
 
 // Publish to partitions in a round-robin fashion.
 client.Publish(context.Background(), "bar", []byte("hello"),
-    lift.Key([]byte("key")),
-    lift.PartitionByRoundRobin(),
+	lift.Key([]byte("key")),
+	lift.PartitionByRoundRobin(),
 )
 
 // Publish to a specific partition.
 client.Publish(context.Background(), "bar", []byte("hello"),
-    lift.Key([]byte("key")),
-    lift.ToPartition(1),
+	lift.Key([]byte("key")),
+	lift.ToPartition(1),
 )
 ```
 
@@ -290,6 +290,6 @@ time.
 ```go
 // Subscribe to a specific partition.
 client.Subscribe(ctx, "bar-stream", func(msg *proto.Message, err error) {
-    fmt.Println(msg.Offset, string(msg.Value))
+	fmt.Println(msg.Offset, string(msg.Value))
 }, lift.Partition(1))
 ```
