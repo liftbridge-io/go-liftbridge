@@ -43,10 +43,10 @@ func main() {
 	defer client.Close()
 
 	// Create a stream attached to the NATS subject "foo".
-    	var (
-        	subject = "foo"
-        	name    = "foo-stream"
-    	)
+    var (
+        subject = "foo"
+        name    = "foo-stream"
+    )
 	if err := client.CreateStream(context.Background(), subject, name); err != nil {
 		if err != lift.ErrStreamExists {
 			panic(err)
@@ -60,7 +60,7 @@ func main() {
 
 	// Subscribe to the stream starting from the beginning.
 	ctx := context.Background()
-	if err := client.Subscribe(ctx, subject, name, func(msg *proto.Message, err error) {
+	if err := client.Subscribe(ctx, name, func(msg *proto.Message, err error) {
 		if err != nil {
 			panic(err)
 		}
@@ -102,32 +102,32 @@ Subscribe.
 
 ```go
 // Subscribe starting with new messages only.
-client.Subscribe(ctx, stream.Subject, stream.Name, func(msg *proto.Message, err error) {
+client.Subscribe(ctx, name, func(msg *proto.Message, err error) {
     fmt.Println(msg.Offset, string(msg.Value))
 })
 
 // Subscribe starting with the most recently published value.
-client.Subscribe(ctx, stream.Subject, stream.Name, func(msg *proto.Message, err error) {
+client.Subscribe(ctx, name, func(msg *proto.Message, err error) {
     fmt.Println(msg.Offset, string(msg.Value))
 }, lift.StartAtLatestReceived())
 
 // Subscribe starting with the oldest published value.
-client.Subscribe(ctx, stream.Subject, stream.Name, func(msg *proto.Message, err error) {
+client.Subscribe(ctx, name, func(msg *proto.Message, err error) {
     fmt.Println(msg.Offset, string(msg.Value))
 }, lift.StartAtEarliestReceived())
 
 // Subscribe starting at a specific offset.
-client.Subscribe(ctx, stream.Subject, stream.Name, func(msg *proto.Message, err error) {
+client.Subscribe(ctx, name, func(msg *proto.Message, err error) {
     fmt.Println(msg.Offset, string(msg.Value))
 }, lift.StartAtOffset(42))
 
 // Subscribe starting at a specific time.
-client.Subscribe(ctx, stream.Subject, stream.Name, func(msg *proto.Message, err error) {
+client.Subscribe(ctx, name, func(msg *proto.Message, err error) {
     fmt.Println(msg.Offset, string(msg.Value))
 }, lift.StartAtTime(time.Now()))
 
 // Subscribe starting at a specific amount of time in the past.
-client.Subscribe(ctx, stream.Subject, stream.Name, func(msg *proto.Message, err error) {
+client.Subscribe(ctx, name, func(msg *proto.Message, err error) {
     fmt.Println(msg.Offset, string(msg.Value))
 }, lift.StartAtTimeDelta(time.Minute))
 ```
@@ -234,4 +234,62 @@ ack, _ := lift.UnmarshalAck(resp.Data)
 if ack.CorrelationId == cid {
     fmt.Println("message acked!")
 }
+```
+
+### Partitioning
+
+Liftbridge streams are partitioned to allow for increased parallelism. By
+default, a stream consists of a single partition, but the number of
+partitions can be configured when the stream is created.
+
+#### Creating Partitioned Streams
+
+```go
+// Create stream with three partitions.
+client.CreateStream(context.Background(), "bar", "bar-stream", lift.Partitions(3))
+```
+
+Each partition maps to a NATS subject derived from the base stream subject. For
+example, the partitions for a stream with three partitions attached to the
+subject "bar" map to the NATS subjects "bar", "bar.1", and "bar.2",
+respectively.
+
+#### Publishing to Stream Partitions
+
+By default, clients will publish to the base partition, but this can be
+configured by providing a `Partitioner`.
+
+```go
+// Publish to partition based on message key hash.
+client.Publish(context.Background(), "bar", []byte("hello"),
+    lift.Key([]byte("key")),
+    lift.PartitionByKey(),
+)
+
+// Publish to partitions in a round-robin fashion.
+client.Publish(context.Background(), "bar", []byte("hello"),
+    lift.Key([]byte("key")),
+    lift.PartitionByRoundRobin(),
+)
+
+// Publish to a specific partition.
+client.Publish(context.Background(), "bar", []byte("hello"),
+    lift.Key([]byte("key")),
+    lift.ToPartition(1),
+)
+```
+
+A custom `Partitioner` implementation can also be provided.
+
+#### Subscribing to Stream Partitions
+
+Like publishing, clients will subscribe to the base partition by default.
+However, a specific partition to consume from can be specified at subscribe
+time.
+
+```go
+// Subscribe to a specific partition.
+client.Subscribe(ctx, "bar-stream", func(msg *proto.Message, err error) {
+    fmt.Println(msg.Offset, string(msg.Value))
+}, lift.Partition(1))
 ```
