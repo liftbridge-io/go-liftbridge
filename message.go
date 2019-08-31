@@ -2,14 +2,104 @@ package liftbridge
 
 import (
 	"bytes"
+	"hash/crc32"
+	"sync"
 
-	"github.com/liftbridge-io/go-liftbridge/liftbridge-grpc"
+	"github.com/liftbridge-io/liftbridge-grpc/go"
 )
 
 var (
-	envelopeCookie    = []byte("LIFT")
-	envelopeCookieLen = len(envelopeCookie)
+	envelopeCookie        = []byte("LIFT")
+	envelopeCookieLen     = len(envelopeCookie)
+	partitionByKey        = new(keyPartitioner)
+	partitionByRoundRobin = newRoundRobinPartitioner()
+	hasher                = crc32.ChecksumIEEE
 )
+
+// Partitioner is used to map a message to a stream partition.
+type Partitioner interface {
+	// Partition computes the partition number for a given message.
+	Partition(msg *proto.Message, metadata *Metadata) int32
+}
+
+// keyPartitioner is an implementation of Partitioner which partitions messages
+// based on a hash of the key.
+type keyPartitioner struct{}
+
+// Partition computes the partition number for a given message by hashing the
+// key and modding by the number of partitions for the first stream found with
+// the subject of the message. This does not work with streams containing
+// wildcards in their subjects, e.g. "foo.*", since this matches on the subject
+// literal of the published message. This also has undefined behavior if there
+// are multiple streams for the given subject.
+func (k *keyPartitioner) Partition(msg *proto.Message, metadata *Metadata) int32 {
+	key := msg.Key
+	if key == nil {
+		key = []byte("")
+	}
+
+	partitions := getPartitionCount(msg.Subject, metadata)
+	if partitions == 0 {
+		return 0
+	}
+
+	return int32(hasher(key)) % partitions
+}
+
+type subjectCounter struct {
+	sync.Mutex
+	count int32
+}
+
+// roundRobinPartitioner is an implementation of Partitioner which partitions
+// messages in a round-robin fashion.
+type roundRobinPartitioner struct {
+	sync.Mutex
+	subjectCounterMap map[string]*subjectCounter
+}
+
+func newRoundRobinPartitioner() Partitioner {
+	return &roundRobinPartitioner{
+		subjectCounterMap: make(map[string]*subjectCounter),
+	}
+}
+
+// Partition computes the partition number for a given message in a round-robin
+// fashion by atomically incrementing a counter for the message subject and
+// modding by the number of partitions for the first stream found with the
+// subject. This does not work with streams containing wildcards in their
+// subjects, e.g. "foo.*", since this matches on the subject literal of the
+// published message. This also has undefined behavior if there are multiple
+// streams for the given subject.
+func (r *roundRobinPartitioner) Partition(msg *proto.Message, metadata *Metadata) int32 {
+	partitions := getPartitionCount(msg.Subject, metadata)
+	if partitions == 0 {
+		return 0
+	}
+	r.Lock()
+	counter, ok := r.subjectCounterMap[msg.Subject]
+	if !ok {
+		counter = new(subjectCounter)
+		r.subjectCounterMap[msg.Subject] = counter
+	}
+	r.Unlock()
+	counter.Lock()
+	count := counter.count
+	counter.count++
+	counter.Unlock()
+	return count % partitions
+}
+
+func getPartitionCount(subject string, metadata *Metadata) int32 {
+	counts := metadata.PartitionCountsForSubject(subject)
+
+	// Get the first matching stream's count.
+	for _, count := range counts {
+		return count
+	}
+
+	return 0
+}
 
 // MessageOptions are used to configure optional settings for a Message.
 type MessageOptions struct {
@@ -33,6 +123,15 @@ type MessageOptions struct {
 
 	// Headers are key-value pairs to set on the Message.
 	Headers map[string][]byte
+
+	// Partitioner specifies the strategy for mapping a Message to a stream
+	// partition.
+	Partitioner Partitioner
+
+	// Partition specifies the stream partition to publish the Message to. If
+	// this is set, any Partitioner will not be used. This is a pointer to
+	// allow distinguishing between unset and 0.
+	Partition *int32
 }
 
 // MessageOption is a function on the MessageOptions for a Message. These are
@@ -107,6 +206,46 @@ func Headers(headers map[string][]byte) MessageOption {
 			o.Headers[name] = value
 		}
 	}
+}
+
+// ToPartition is a MessageOption that specifies the stream partition to
+// publish the Message to. If this is set, any Partitioner will not be used.
+func ToPartition(partition int32) MessageOption {
+	return func(o *MessageOptions) {
+		o.Partition = &partition
+	}
+}
+
+// PartitionBy is a MessageOption that specifies a Partitioner used to map
+// Messages to stream partitions.
+func PartitionBy(partitioner Partitioner) MessageOption {
+	return func(o *MessageOptions) {
+		o.Partitioner = partitioner
+	}
+}
+
+// PartitionByKey is a MessageOption that maps Messages to stream partitions
+// based on a hash of the Message key. This computes the partition number for a
+// given message by hashing the key and modding by the number of partitions for
+// the first stream found with the subject of the published message. This does
+// not work with streams containing wildcards in their subjects, e.g. "foo.*",
+// since this matches on the subject literal of the published message. This
+// also has undefined behavior if there are multiple streams for the given
+// subject.
+func PartitionByKey() MessageOption {
+	return PartitionBy(partitionByKey)
+}
+
+// PartitionByRoundRobin is a MessageOption that maps Messages to stream
+// partitions in a round-robin fashion. This computes the partition number for
+// a given message by atomically incrementing a counter for the message subject
+// and modding by the number of partitions for the first stream found with the
+// subject. This does not work with streams containing wildcards in their
+// subjects, e.g. "foo.*", since this matches on the subject literal of the
+// published message. This also has undefined behavior if there are multiple
+// streams for the given subject.
+func PartitionByRoundRobin() MessageOption {
+	return PartitionBy(partitionByRoundRobin)
 }
 
 // NewMessage returns a serialized message for the given payload and options.
