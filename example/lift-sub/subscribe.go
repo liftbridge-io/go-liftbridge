@@ -7,7 +7,7 @@ import (
 	"golang.org/x/net/context"
 
 	lift "github.com/liftbridge-io/go-liftbridge"
-	"github.com/liftbridge-io/go-liftbridge/liftbridge-grpc"
+	"github.com/liftbridge-io/liftbridge-grpc/go"
 )
 
 func main() {
@@ -30,12 +30,12 @@ func main() {
 	}
 
 	ctx := context.Background()
-	if err := client.Subscribe(ctx, "bar", "bar-stream", func(msg *proto.Message, err error) {
+	if err := client.Subscribe(ctx, "bar-stream", func(msg *proto.Message, err error) {
 		if err != nil {
 			panic(err)
 		}
 		fmt.Println(time.Unix(0, msg.Timestamp), msg.Offset, string(msg.Key), string(msg.Value))
-	}, lift.StartAtEarliestReceived()); err != nil {
+	}, lift.StartAtEarliestReceived(), lift.Partition(2)); err != nil {
 		panic(err)
 	}
 

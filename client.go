@@ -1,5 +1,3 @@
-//go:generate protoc --gofast_out=plugins=grpc:. ./liftbridge-grpc/api.proto
-
 // Package liftbridge implements a client for the Liftbridge messaging system.
 // Liftbridge provides lightweight, fault-tolerant message streams by
 // implementing a durable stream augmentation NATS. In particular, it offers a
@@ -23,7 +21,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 
-	"github.com/liftbridge-io/go-liftbridge/liftbridge-grpc"
+	"github.com/liftbridge-io/liftbridge-grpc/go"
 )
 
 // MaxReplicationFactor can be used to tell the server to set the replication
@@ -65,6 +63,11 @@ type StreamOptions struct {
 	// replication factor equal to the current number of servers in the
 	// cluster.
 	ReplicationFactor int32
+
+	// Partitions determines how many partitions to create for a stream. If 0,
+	// this will behave as a stream with a single partition. If this is not
+	// set, it defaults to 1.
+	Partitions int32
 }
 
 // StreamOption is a function on the StreamOptions for a stream. These are used
@@ -103,6 +106,21 @@ func MaxReplication() StreamOption {
 	}
 }
 
+// Partitions is a StreamOption to set the number of partitions for a stream. A
+// partitioned stream for NATS subject "foo.bar" with three partitions
+// internally maps to the NATS subjects "0.foo.bar", "1.foo.bar", and
+// "2.foo.bar". A single partition would map to "foo.bar" to match behavior of
+// an "un-partitioned" stream. If this is not set, it defaults to 1.
+func Partitions(partitions int32) StreamOption {
+	return func(o *StreamOptions) error {
+		if partitions < 0 {
+			return fmt.Errorf("invalid number of partitions: %d", partitions)
+		}
+		o.Partitions = partitions
+		return nil
+	}
+}
+
 // Client is the main API used to communicate with a Liftbridge cluster. Call
 // Connect to get a Client instance.
 type Client interface {
@@ -121,7 +139,7 @@ type Client interface {
 	// start position is the end of the stream. It returns an ErrNoSuchStream
 	// if the given stream does not exist. Use a cancelable Context to close a
 	// subscription.
-	Subscribe(ctx context.Context, subject, name string, handler Handler, opts ...SubscriptionOption) error
+	Subscribe(ctx context.Context, stream string, handler Handler, opts ...SubscriptionOption) error
 
 	// Publish publishes a new message to the NATS subject. If the AckPolicy is
 	// not NONE and a deadline is provided, this will synchronously block until
@@ -136,16 +154,14 @@ type Client interface {
 // for each broker in the cluster, limiting the number of connections and
 // closing them when they go unused for a prolonged period of time.
 type client struct {
-	mu          sync.RWMutex
-	apiClient   proto.APIClient
-	conn        *grpc.ClientConn
-	streamAddrs map[string]map[string]string
-	brokerAddrs map[string]string
-	pools       map[string]*connPool
-	addrs       map[string]struct{}
-	opts        ClientOptions
-	dialOpts    []grpc.DialOption
-	closed      bool
+	mu        sync.RWMutex
+	apiClient proto.APIClient
+	conn      *grpc.ClientConn
+	metadata  *metadataCache
+	pools     map[string]*connPool
+	opts      ClientOptions
+	dialOpts  []grpc.DialOption
+	closed    bool
 }
 
 // ClientOptions are used to control the Client configuration.
@@ -211,19 +227,16 @@ func (o ClientOptions) Connect() (Client, error) {
 	if conn == nil {
 		return nil, err
 	}
-	addrMap := make(map[string]struct{}, len(o.Brokers))
-	for _, addr := range o.Brokers {
-		addrMap[addr] = struct{}{}
-	}
+
 	c := &client{
 		conn:      conn,
 		apiClient: proto.NewAPIClient(conn),
 		pools:     make(map[string]*connPool),
-		addrs:     addrMap,
 		opts:      o,
 		dialOpts:  opts,
 	}
-	if _, err := c.updateMetadata(); err != nil {
+	c.metadata = newMetadataCache(o.Brokers, c.doResilientRPC)
+	if _, err := c.metadata.update(); err != nil {
 		return nil, err
 	}
 	return c, nil
@@ -336,6 +349,7 @@ func (c *client) CreateStream(ctx context.Context, subject, name string, options
 		Name:              name,
 		ReplicationFactor: opts.ReplicationFactor,
 		Group:             opts.Group,
+		Partitions:        opts.Partitions,
 	}
 	err := c.doResilientRPC(func(client proto.APIClient) error {
 		_, err := client.CreateStream(ctx, req)
@@ -357,6 +371,9 @@ type SubscriptionOptions struct {
 
 	// StartTimestamp sets the stream start position to the given timestamp.
 	StartTimestamp time.Time
+
+	// Partition sets the stream partition to consume.
+	Partition int32
 }
 
 // SubscriptionOption is a function on the SubscriptionOptions for a
@@ -419,12 +436,24 @@ func StartAtEarliestReceived() SubscriptionOption {
 	}
 }
 
+// Partition specifies the stream partition to consume. If not set, this
+// defaults to 0.
+func Partition(partition int32) SubscriptionOption {
+	return func(o *SubscriptionOptions) error {
+		if partition < 0 {
+			return fmt.Errorf("invalid partition: %d", partition)
+		}
+		o.Partition = partition
+		return nil
+	}
+}
+
 // Subscribe creates an ephemeral subscription for the given stream. It begins
 // receiving messages starting at the configured position and waits for new
 // messages when it reaches the end of the stream. The default start position
 // is the end of the stream. It returns an ErrNoSuchStream if the given stream
 // does not exist. Use a cancelable Context to close a subscription.
-func (c *client) Subscribe(ctx context.Context, subject, name string, handler Handler,
+func (c *client) Subscribe(ctx context.Context, streamName string, handler Handler,
 	options ...SubscriptionOption) (err error) {
 
 	opts := &SubscriptionOptions{}
@@ -434,12 +463,12 @@ func (c *client) Subscribe(ctx context.Context, subject, name string, handler Ha
 		}
 	}
 
-	stream, releaseConn, err := c.subscribe(ctx, subject, name, opts)
+	stream, releaseConn, err := c.subscribe(ctx, streamName, opts)
 	if err != nil {
 		return err
 	}
 
-	go c.dispatchStream(ctx, subject, name, stream, releaseConn, handler)
+	go c.dispatchStream(ctx, streamName, stream, releaseConn, handler)
 	return nil
 }
 
@@ -455,64 +484,105 @@ func (c *client) Publish(ctx context.Context, subject string, value []byte,
 	for _, opt := range options {
 		opt(opts)
 	}
-	req := &proto.PublishRequest{Message: &proto.Message{
+
+	msg := &proto.Message{
 		Subject:       subject,
 		Key:           opts.Key,
 		Value:         value,
 		AckInbox:      opts.AckInbox,
 		CorrelationId: opts.CorrelationID,
 		AckPolicy:     opts.AckPolicy,
-	}}
+	}
+
+	partition, err := c.partition(msg, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	// Publish to the appropriate partition subject.
+	if partition > 0 {
+		msg.Subject = fmt.Sprintf("%s.%d", msg.Subject, partition)
+	}
+
 	var (
+		req = &proto.PublishRequest{Message: msg}
 		ack *proto.Ack
-		err = c.doResilientRPC(func(client proto.APIClient) error {
-			resp, err := client.Publish(ctx, req)
-			if err == nil {
-				ack = resp.Ack
-			}
-			return err
-		})
 	)
+	err = c.doResilientRPC(func(client proto.APIClient) error {
+		resp, err := client.Publish(ctx, req)
+		if err == nil {
+			ack = resp.Ack
+		}
+		return err
+	})
 	return ack, err
 }
 
-func (c *client) subscribe(ctx context.Context, subject, name string,
+func (c *client) partition(msg *proto.Message, opts *MessageOptions) (int32, error) {
+	var partition int32
+	// If a partition is explicitly provided, use it.
+	if opts.Partition != nil {
+		partition = *opts.Partition
+	} else if opts.Partitioner != nil {
+		// Make sure we have metadata for the stream and, if not, update it.
+		metadata, err := c.waitForSubjectMetadata(msg.Subject)
+		if err != nil {
+			return 0, err
+		}
+		partition = opts.Partitioner.Partition(msg, metadata)
+	}
+	return partition, nil
+}
+
+func (c *client) waitForSubjectMetadata(subject string) (*Metadata, error) {
+	for i := 0; i < 5; i++ {
+		metadata := c.metadata.get()
+		if metadata.hasSubjectMetadata(subject) {
+			return metadata, nil
+		}
+		time.Sleep(50 * time.Millisecond)
+		c.metadata.update()
+	}
+	return nil, fmt.Errorf("no metadata for stream with subject %s", subject)
+}
+
+func (c *client) subscribe(ctx context.Context, stream string,
 	opts *SubscriptionOptions) (proto.API_SubscribeClient, func(), error) {
 	var (
-		pool   *connPool
-		addr   string
-		conn   *grpc.ClientConn
-		stream proto.API_SubscribeClient
-		err    error
+		pool *connPool
+		addr string
+		conn *grpc.ClientConn
+		st   proto.API_SubscribeClient
+		err  error
 	)
 	for i := 0; i < 5; i++ {
-		pool, addr, err = c.getPoolAndAddr(subject, name)
+		pool, addr, err = c.getPoolAndAddr(stream, opts.Partition)
 		if err != nil {
 			time.Sleep(50 * time.Millisecond)
-			c.updateMetadata()
+			c.metadata.update()
 			continue
 		}
 		conn, err = pool.get(c.connFactory(addr))
 		if err != nil {
 			time.Sleep(50 * time.Millisecond)
-			c.updateMetadata()
+			c.metadata.update()
 			continue
 		}
 		var (
 			client = proto.NewAPIClient(conn)
 			req    = &proto.SubscribeRequest{
-				Subject:        subject,
-				Name:           name,
+				Stream:         stream,
 				StartPosition:  opts.StartPosition,
 				StartOffset:    opts.StartOffset,
 				StartTimestamp: opts.StartTimestamp.UnixNano(),
+				Partition:      opts.Partition,
 			}
 		)
-		stream, err = client.Subscribe(ctx, req)
+		st, err = client.Subscribe(ctx, req)
 		if err != nil {
 			if status.Code(err) == codes.Unavailable {
 				time.Sleep(50 * time.Millisecond)
-				c.updateMetadata()
+				c.metadata.update()
 				continue
 			}
 			return nil, nil, err
@@ -520,12 +590,12 @@ func (c *client) subscribe(ctx context.Context, subject, name string,
 
 		// The server will either send an empty message, indicating the
 		// subscription was successfully created, or an error.
-		_, err = stream.Recv()
+		_, err = st.Recv()
 		if status.Code(err) == codes.FailedPrecondition {
 			// This indicates the server was not the stream leader. Refresh
 			// metadata and retry after waiting a bit.
 			time.Sleep(time.Duration(10+i*50) * time.Millisecond)
-			c.updateMetadata()
+			c.metadata.update()
 			continue
 		}
 		if err != nil {
@@ -534,12 +604,12 @@ func (c *client) subscribe(ctx context.Context, subject, name string,
 			}
 			return nil, nil, err
 		}
-		return stream, func() { pool.put(conn) }, nil
+		return st, func() { pool.put(conn) }, nil
 	}
 	return nil, nil, err
 }
 
-func (c *client) dispatchStream(ctx context.Context, subject, name string,
+func (c *client) dispatchStream(ctx context.Context, streamName string,
 	stream proto.API_SubscribeClient, releaseConn func(), handler Handler) {
 
 	defer releaseConn()
@@ -587,7 +657,7 @@ func (c *client) dispatchStream(ctx context.Context, subject, name string,
 	if resubscribe {
 		deadline := time.Now().Add(c.opts.ResubscribeWaitTime)
 		for time.Now().Before(deadline) && !closed {
-			err := c.Subscribe(ctx, subject, name, handler, StartAtOffset(lastOffset+1))
+			err := c.Subscribe(ctx, streamName, handler, StartAtOffset(lastOffset+1))
 			if err == nil {
 				return
 			}
@@ -608,54 +678,15 @@ func (c *client) connFactory(addr string) connFactory {
 	}
 }
 
-// updateMetadata fetches the latest cluster metadata, including stream and
-// broker information. This maintains a map from broker ID to address and a map
-// from stream to broker address.
-func (c *client) updateMetadata() (*proto.FetchMetadataResponse, error) {
-	var resp *proto.FetchMetadataResponse
-	if err := c.doResilientRPC(func(client proto.APIClient) (err error) {
-		resp, err = client.FetchMetadata(context.Background(), &proto.FetchMetadataRequest{})
-		return err
-	}); err != nil {
-		return nil, err
+// getPoolAndAddr returns the connPool and broker address for the given
+// partition.
+func (c *client) getPoolAndAddr(stream string, partition int32) (*connPool, string, error) {
+	addr, err := c.metadata.getAddr(stream, partition)
+	if err != nil {
+		return nil, "", err
 	}
-
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
-	brokerAddrs := make(map[string]string)
-	for _, broker := range resp.Brokers {
-		addr := fmt.Sprintf("%s:%d", broker.Host, broker.Port)
-		brokerAddrs[broker.Id] = addr
-		c.addrs[addr] = struct{}{}
-	}
-	c.brokerAddrs = brokerAddrs
-
-	streamAddrs := make(map[string]map[string]string)
-	for _, metadata := range resp.Metadata {
-		subjectStreams, ok := streamAddrs[metadata.Stream.Subject]
-		if !ok {
-			subjectStreams = make(map[string]string)
-			streamAddrs[metadata.Stream.Subject] = subjectStreams
-		}
-		subjectStreams[metadata.Stream.Name] = c.brokerAddrs[metadata.Leader]
-	}
-	c.streamAddrs = streamAddrs
-	return resp, nil
-}
-
-// getPoolAndAddr returns the connPool and broker address for the given stream.
-func (c *client) getPoolAndAddr(subject, name string) (*connPool, string, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	streamAddrs, ok := c.streamAddrs[subject]
-	if !ok {
-		return nil, "", errors.New("no known broker for stream")
-	}
-	addr, ok := streamAddrs[name]
-	if !ok {
-		return nil, "", errors.New("no known broker for stream")
-	}
 	pool, ok := c.pools[addr]
 	if !ok {
 		pool = newConnPool(c.opts.MaxConnsPerBroker, c.opts.KeepAliveTime)
@@ -671,7 +702,7 @@ func (c *client) doResilientRPC(rpc func(client proto.APIClient) error) (err err
 	client := c.apiClient
 	c.mu.RUnlock()
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 10; i++ {
 		err = rpc(client)
 		if status.Code(err) == codes.Unavailable {
 			conn, err := c.dialBroker()
@@ -694,18 +725,11 @@ func (c *client) doResilientRPC(rpc func(client proto.APIClient) error) (err err
 // dialBroker dials each broker in the cluster, in random order, returning a
 // gRPC ClientConn to the first one that is successful.
 func (c *client) dialBroker() (*grpc.ClientConn, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	addrs := make([]string, len(c.addrs))
-	i := 0
-	for addr := range c.addrs {
-		addrs[i] = addr
-		i++
-	}
 	var (
-		conn *grpc.ClientConn
-		err  error
-		perm = rand.Perm(len(addrs))
+		conn  *grpc.ClientConn
+		err   error
+		addrs = c.metadata.getAddrs()
+		perm  = rand.Perm(len(addrs))
 	)
 	for _, i := range perm {
 		conn, err = grpc.Dial(addrs[i], c.dialOpts...)
