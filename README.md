@@ -172,7 +172,7 @@ client.Publish(context.Background(), "foo", []byte("hello"),
 
 Since Liftbridge is an extension of
 [NATS](https://github.com/nats-io/gnatsd), a [NATS
-client](https://github.com/nats-io/go-nats) can also be used to publish messages. This
+client](https://github.com/nats-io/nats.go) can also be used to publish messages. This
 means existing NATS publishers do not need any changes for messages to be
 consumed in Liftbridge.
 
