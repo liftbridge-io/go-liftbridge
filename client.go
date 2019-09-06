@@ -40,9 +40,9 @@ var (
 	// already exists in the Liftbridge cluster.
 	ErrStreamExists = errors.New("stream already exists")
 
-	// ErrNoSuchStream is returned by Subscribe if the specified stream does
-	// not exist in the Liftbridge cluster.
-	ErrNoSuchStream = errors.New("stream does not exist")
+	// ErrNoSuchPartition is returned by Subscribe if the specified stream
+	// partition does not exist in the Liftbridge cluster.
+	ErrNoSuchPartition = errors.New("stream partition does not exist")
 )
 
 // Handler is the callback invoked by Subscribe when a message is received on
@@ -136,9 +136,9 @@ type Client interface {
 	// Subscribe creates an ephemeral subscription for the given stream. It
 	// begins receiving messages starting at the configured position and waits
 	// for new messages when it reaches the end of the stream. The default
-	// start position is the end of the stream. It returns an ErrNoSuchStream
-	// if the given stream does not exist. Use a cancelable Context to close a
-	// subscription.
+	// start position is the end of the stream. It returns an
+	// ErrNoSuchPartition if the given stream or partition does not exist. Use
+	// a cancelable Context to close a subscription.
 	Subscribe(ctx context.Context, stream string, handler Handler, opts ...SubscriptionOption) error
 
 	// Publish publishes a new message to the NATS subject. If the AckPolicy is
@@ -443,8 +443,9 @@ func Partition(partition int32) SubscriptionOption {
 // Subscribe creates an ephemeral subscription for the given stream. It begins
 // receiving messages starting at the configured position and waits for new
 // messages when it reaches the end of the stream. The default start position
-// is the end of the stream. It returns an ErrNoSuchStream if the given stream
-// does not exist. Use a cancelable Context to close a subscription.
+// is the end of the stream. It returns an ErrNoSuchPartition if the given
+// stream or partition does not exist. Use a cancelable Context to close a
+// subscription.
 func (c *client) Subscribe(ctx context.Context, streamName string, handler Handler,
 	options ...SubscriptionOption) (err error) {
 
@@ -592,7 +593,7 @@ func (c *client) subscribe(ctx context.Context, stream string,
 		}
 		if err != nil {
 			if status.Code(err) == codes.NotFound {
-				err = ErrNoSuchStream
+				err = ErrNoSuchPartition
 			}
 			return nil, nil, err
 		}
