@@ -380,14 +380,6 @@ type SubscriptionOptions struct {
 // subscription. These are used to configure particular subscription options.
 type SubscriptionOption func(*SubscriptionOptions) error
 
-// StartAt sets the desired start position for the stream.
-func StartAt(start proto.StartPosition) SubscriptionOption {
-	return func(o *SubscriptionOptions) error {
-		o.StartPosition = start
-		return nil
-	}
-}
-
 // StartAtOffset sets the desired start offset to begin consuming from in the
 // stream.
 func StartAtOffset(offset int64) SubscriptionOption {
