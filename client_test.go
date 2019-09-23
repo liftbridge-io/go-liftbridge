@@ -34,7 +34,7 @@ func getPartitionLeader(t *testing.T, timeout time.Duration, name string, partit
 		deadline = time.Now().Add(timeout)
 	)
 	for time.Now().Before(deadline) {
-		metadata, err := client.metadata.update()
+		metadata, err := client.FetchMetadata(context.Background())
 		require.NoError(t, err)
 		stream := metadata.GetStream(name)
 		if stream == nil {
@@ -638,7 +638,7 @@ func TestPartitioning(t *testing.T) {
 
 	require.NoError(t, conn.CreateStream(context.Background(), "foo", "bar", Partitions(3)))
 
-	metadata, err := conn.(*client).metadata.update()
+	metadata, err := conn.FetchMetadata(context.Background())
 	require.NoError(t, err)
 	stream := metadata.GetStream("bar")
 	require.NotNil(t, stream)
