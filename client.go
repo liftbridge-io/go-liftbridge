@@ -148,6 +148,10 @@ type Client interface {
 	// are configured, this returns the first Ack on success, otherwise it
 	// returns nil.
 	Publish(ctx context.Context, subject string, value []byte, opts ...MessageOption) (*proto.Ack, error)
+
+	// FetchMetadata returns cluster metadata including broker and stream
+	// information.
+	FetchMetadata(ctx context.Context) (*Metadata, error)
 }
 
 // client implements the Client interface. It maintains a pool of connections
@@ -236,7 +240,7 @@ func (o ClientOptions) Connect() (Client, error) {
 		dialOpts:  opts,
 	}
 	c.metadata = newMetadataCache(o.Brokers, c.doResilientRPC)
-	if _, err := c.metadata.update(); err != nil {
+	if _, err := c.metadata.update(context.Background()); err != nil {
 		return nil, err
 	}
 	return c, nil
@@ -487,7 +491,8 @@ func (c *client) Publish(ctx context.Context, subject string, value []byte,
 		AckPolicy:     opts.AckPolicy,
 	}
 
-	partition, err := c.partition(msg, opts)
+	// Determine which partition to publish to.
+	partition, err := c.partition(ctx, msg, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -511,14 +516,24 @@ func (c *client) Publish(ctx context.Context, subject string, value []byte,
 	return ack, err
 }
 
-func (c *client) partition(msg *proto.Message, opts *MessageOptions) (int32, error) {
+// FetchMetadata returns cluster metadata including broker and stream
+// information.
+func (c *client) FetchMetadata(ctx context.Context) (*Metadata, error) {
+	return c.metadata.update(ctx)
+}
+
+// partition determines the partition ID to publish the message to. If a
+// partition was explicitly provided, it will be returned. If a Partitioner was
+// provided, it will be used to compute the partition. Otherwise, 0 will be
+// returned.
+func (c *client) partition(ctx context.Context, msg *proto.Message, opts *MessageOptions) (int32, error) {
 	var partition int32
 	// If a partition is explicitly provided, use it.
 	if opts.Partition != nil {
 		partition = *opts.Partition
 	} else if opts.Partitioner != nil {
 		// Make sure we have metadata for the stream and, if not, update it.
-		metadata, err := c.waitForSubjectMetadata(msg.Subject)
+		metadata, err := c.waitForSubjectMetadata(ctx, msg.Subject)
 		if err != nil {
 			return 0, err
 		}
@@ -527,14 +542,14 @@ func (c *client) partition(msg *proto.Message, opts *MessageOptions) (int32, err
 	return partition, nil
 }
 
-func (c *client) waitForSubjectMetadata(subject string) (*Metadata, error) {
+func (c *client) waitForSubjectMetadata(ctx context.Context, subject string) (*Metadata, error) {
 	for i := 0; i < 5; i++ {
 		metadata := c.metadata.get()
 		if metadata.hasSubjectMetadata(subject) {
 			return metadata, nil
 		}
 		time.Sleep(50 * time.Millisecond)
-		c.metadata.update()
+		c.metadata.update(ctx)
 	}
 	return nil, fmt.Errorf("no metadata for stream with subject %s", subject)
 }
@@ -552,13 +567,13 @@ func (c *client) subscribe(ctx context.Context, stream string,
 		pool, addr, err = c.getPoolAndAddr(stream, opts.Partition)
 		if err != nil {
 			time.Sleep(50 * time.Millisecond)
-			c.metadata.update()
+			c.metadata.update(ctx)
 			continue
 		}
 		conn, err = pool.get(c.connFactory(addr))
 		if err != nil {
 			time.Sleep(50 * time.Millisecond)
-			c.metadata.update()
+			c.metadata.update(ctx)
 			continue
 		}
 		var (
@@ -575,7 +590,7 @@ func (c *client) subscribe(ctx context.Context, stream string,
 		if err != nil {
 			if status.Code(err) == codes.Unavailable {
 				time.Sleep(50 * time.Millisecond)
-				c.metadata.update()
+				c.metadata.update(ctx)
 				continue
 			}
 			return nil, nil, err
@@ -588,7 +603,7 @@ func (c *client) subscribe(ctx context.Context, stream string,
 			// This indicates the server was not the stream leader. Refresh
 			// metadata and retry after waiting a bit.
 			time.Sleep(time.Duration(10+i*50) * time.Millisecond)
-			c.metadata.update()
+			c.metadata.update(ctx)
 			continue
 		}
 		if err != nil {

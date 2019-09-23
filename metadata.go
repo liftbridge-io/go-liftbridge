@@ -216,10 +216,10 @@ func newMetadataCache(addrs []string, doRPC func(func(proto.APIClient) error) er
 
 // update fetches the latest cluster metadata, including stream and broker
 // information.
-func (m *metadataCache) update() (*Metadata, error) {
+func (m *metadataCache) update(ctx context.Context) (*Metadata, error) {
 	var resp *proto.FetchMetadataResponse
 	if err := m.doRPC(func(client proto.APIClient) (err error) {
-		resp, err = client.FetchMetadata(context.Background(), &proto.FetchMetadataRequest{})
+		resp, err = client.FetchMetadata(ctx, &proto.FetchMetadataRequest{})
 		return err
 	}); err != nil {
 		return nil, err
