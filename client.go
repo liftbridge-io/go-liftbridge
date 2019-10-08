@@ -9,6 +9,7 @@
 package liftbridge
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -187,6 +188,10 @@ type ClientOptions struct {
 	// TLS connection if this is not set.
 	TLSCert string
 
+	// TLSConfig is the TLS configuration to use. The client does not use a
+	// TLS connection if this is not set. Overrides TLSCert if set.
+	TLSConfig *tls.Config
+
 	// ResubscribeWaitTime is the amount of time to attempt to re-establish a
 	// stream subscription after being disconnected. For example, if the server
 	// serving a subscription dies and the stream is replicated, the client
@@ -208,7 +213,11 @@ func (o ClientOptions) Connect() (Client, error) {
 		opts = []grpc.DialOption{}
 	)
 
-	if o.TLSCert != "" {
+	if o.TLSConfig != nil {
+		// Setup TLS configuration if it is provided.
+		creds := credentials.NewTLS(o.TLSConfig)
+		opts = append(opts, grpc.WithTransportCredentials(creds))
+	} else if o.TLSCert != "" {
 		// Setup TLS credentials if cert is provided.
 		creds, err := credentials.NewClientTLSFromFile(o.TLSCert, "")
 		if err != nil {
@@ -283,6 +292,15 @@ func KeepAliveTime(keepAlive time.Duration) ClientOption {
 func TLSCert(cert string) ClientOption {
 	return func(o *ClientOptions) error {
 		o.TLSCert = cert
+		return nil
+	}
+}
+
+// TLSConfig is a ClientOption to set the TLS configuration for the client.
+// Overrides TLSCert.
+func TLSConfig(config *tls.Config) ClientOption {
+	return func(o *ClientOptions) error {
+		o.TLSConfig = config
 		return nil
 	}
 }
