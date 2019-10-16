@@ -29,7 +29,7 @@ import (
 	"fmt"
 
 	lift "github.com/liftbridge-io/go-liftbridge"
-	"github.com/liftbridge-io/go-liftbridge/liftbridge-grpc"
+	"github.com/liftbridge-io/liftbridge-grpc/go"
 	"golang.org/x/net/context"
 )
 
