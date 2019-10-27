@@ -1,12 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"time"
 
 	"github.com/nats-io/nats.go"
-	"golang.org/x/net/context"
 
 	lift "github.com/liftbridge-io/go-liftbridge"
 )

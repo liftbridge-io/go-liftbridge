@@ -1,12 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"strconv"
 	"time"
-
-	"golang.org/x/net/context"
 
 	lift "github.com/liftbridge-io/go-liftbridge"
 )

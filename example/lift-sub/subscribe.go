@@ -1,10 +1,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
-
-	"golang.org/x/net/context"
 
 	lift "github.com/liftbridge-io/go-liftbridge"
 	"github.com/liftbridge-io/liftbridge-grpc/go"

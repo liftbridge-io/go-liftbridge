@@ -1,12 +1,11 @@
 package liftbridge
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
 	"time"
-
-	"golang.org/x/net/context"
 
 	"github.com/liftbridge-io/liftbridge-grpc/go"
 )

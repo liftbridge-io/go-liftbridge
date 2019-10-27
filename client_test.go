@@ -1,6 +1,7 @@
 package liftbridge
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"testing"
@@ -10,7 +11,6 @@ import (
 	natsdTest "github.com/nats-io/nats-server/test"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/context"
 
 	"github.com/liftbridge-io/liftbridge-grpc/go"
 )
