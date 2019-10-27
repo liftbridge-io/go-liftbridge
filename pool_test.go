@@ -8,12 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/liftbridge-io/liftbridge/server"
 	natsdTest "github.com/nats-io/nats-server/test"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/grpclog"
+
+	"github.com/liftbridge-io/liftbridge/server"
 )
 
 var storagePath string

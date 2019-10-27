@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/liftbridge-io/liftbridge-grpc/go"
+	proto "github.com/liftbridge-io/liftbridge-grpc/go"
 )
 
 type streamIndex struct {
