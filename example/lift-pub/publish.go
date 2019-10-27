@@ -36,7 +36,8 @@ func main() {
 
 	fmt.Println("publishing")
 	for i := 0; i < count; i++ {
-		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 		if _, err := client.Publish(ctx, "bar",
 			[]byte(strconv.FormatInt(int64(i), 10)),
 			lift.Key(keys[rand.Intn(len(keys))]),
