@@ -1,18 +1,18 @@
 package liftbridge
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"testing"
 	"time"
 
-	"github.com/liftbridge-io/liftbridge/server"
 	natsdTest "github.com/nats-io/nats-server/test"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/context"
 
-	"github.com/liftbridge-io/liftbridge-grpc/go"
+	proto "github.com/liftbridge-io/liftbridge-grpc/go"
+	"github.com/liftbridge-io/liftbridge/server"
 )
 
 type message struct {
