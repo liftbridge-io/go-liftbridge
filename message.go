@@ -542,3 +542,13 @@ func hasBit(n byte, pos uint8) bool {
 	val := n & (1 << pos)
 	return (val > 0)
 }
+
+// UnmarshalStreamEvent deserializes a stream event from the given byte slice.
+// It returns an error if the given data is not actually a stream event.
+func UnmarshalStreamEvent(data []byte) (*proto.StreamEvent, error) {
+	var (
+		ack = &proto.StreamEvent{}
+		err = ack.Unmarshal(data)
+	)
+	return ack, err
+}
