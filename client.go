@@ -404,12 +404,17 @@ func (c *client) CreateStream(ctx context.Context, subject, name string, options
 		}
 	}
 
+	if name == "events" && opts.AutoDisableDuration != 0 {
+		return errors.New("Cannot enable partition pausing on the events stream")
+	}
+
 	req := &proto.CreateStreamRequest{
-		Subject:           subject,
-		Name:              name,
-		ReplicationFactor: opts.ReplicationFactor,
-		Group:             opts.Group,
-		Partitions:        opts.Partitions,
+		Subject:             subject,
+		Name:                name,
+		ReplicationFactor:   opts.ReplicationFactor,
+		Group:               opts.Group,
+		Partitions:          opts.Partitions,
+		AutoDisableDuration: opts.AutoDisableDuration,
 	}
 	err := c.doResilientRPC(func(client proto.APIClient) error {
 		_, err := client.CreateStream(ctx, req)
