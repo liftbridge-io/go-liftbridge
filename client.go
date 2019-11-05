@@ -76,6 +76,9 @@ type StreamOptions struct {
 	// this will behave as a stream with a single partition. If this is not
 	// set, it defaults to 1.
 	Partitions int32
+
+	// TODO
+	AutoDisableDuration uint64
 }
 
 // StreamOption is a function on the StreamOptions for a stream. These are used
@@ -125,6 +128,14 @@ func Partitions(partitions int32) StreamOption {
 			return fmt.Errorf("invalid number of partitions: %d", partitions)
 		}
 		o.Partitions = partitions
+		return nil
+	}
+}
+
+// TODO
+func AutoDisableDuration(duration uint64) StreamOption {
+	return func(o *StreamOptions) error {
+		o.AutoDisableDuration = duration
 		return nil
 	}
 }
