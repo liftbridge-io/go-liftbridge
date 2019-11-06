@@ -141,6 +141,10 @@ type Client interface {
 	// with the given subject and name already exists.
 	CreateStream(ctx context.Context, subject, name string, opts ...StreamOption) error
 
+	// DeleteStream deletes a stream. Subject is the NATS subject the stream is
+	// attached to, and name is the stream identifier, unique per subject.
+	DeleteStream(ctx context.Context, name string) error
+
 	// Subscribe creates an ephemeral subscription for the given stream. It
 	// begins receiving messages starting at the configured position and waits
 	// for new messages when it reaches the end of the stream. The default
@@ -407,6 +411,19 @@ func (c *client) CreateStream(ctx context.Context, subject, name string, options
 	if status.Code(err) == codes.AlreadyExists {
 		return ErrStreamExists
 	}
+	return err
+}
+
+// DeleteStream deletes a stream. Subject is the NATS subject the stream is
+// attached to, and name is the stream identifier, unique per subject.
+func (c *client) DeleteStream(ctx context.Context, name string) error {
+	req := &proto.DeleteStreamRequest{
+		Name: name,
+	}
+	err := c.doResilientRPC(func(client proto.APIClient) error {
+		_, err := client.DeleteStream(ctx, req)
+		return err
+	})
 	return err
 }
 
