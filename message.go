@@ -5,7 +5,7 @@ import (
 	"hash/crc32"
 	"sync"
 
-	"github.com/liftbridge-io/liftbridge-grpc/go"
+	"github.com/liftbridge-io/liftbridge-api/go"
 )
 
 var (

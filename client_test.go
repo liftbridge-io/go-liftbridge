@@ -11,7 +11,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/require"
 
-	proto "github.com/liftbridge-io/liftbridge-grpc/go"
+	proto "github.com/liftbridge-io/liftbridge-api/go"
 	"github.com/liftbridge-io/liftbridge/server"
 )
 
@@ -781,9 +781,9 @@ func TestPublishPartitionByKey(t *testing.T) {
 	}
 
 	msgs := map[string]struct{}{
-		"0": struct{}{},
-		"1": struct{}{},
-		"2": struct{}{},
+		"0": {},
+		"1": {},
+		"2": {},
 	}
 
 	for i := 0; i < 3; i++ {

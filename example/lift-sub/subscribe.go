@@ -6,7 +6,7 @@ import (
 	"time"
 
 	lift "github.com/liftbridge-io/go-liftbridge"
-	proto "github.com/liftbridge-io/liftbridge-grpc/go"
+	proto "github.com/liftbridge-io/liftbridge-api/go"
 )
 
 func main() {
