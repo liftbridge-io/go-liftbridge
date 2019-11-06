@@ -23,6 +23,9 @@ github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA
 github.com/circonus-labs/circonus-gometrics v2.3.1+incompatible/go.mod h1:nmEj6Dob7S7YxXgwXpfOuvO54S+tGdZdw9fuRZt25Ag=
 github.com/circonus-labs/circonusllhist v0.1.3/go.mod h1:kMXHVDlOchFAehlya5ePtbp5jckzBHf4XRpQvBOLI+I=
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
+github.com/cpuguy83/go-md2man/v2 v2.0.0-20190314233015-f79a8a8ca69d/go.mod h1:maD7wRr/U5Z6m/iR4s+kqSMx2CaBsrgA7czyZG/E6dU=
+github.com/cpuguy83/go-md2man/v2 v2.0.0 h1:EoUDS0afbrsXAZ9YQ9jdu/mZ2sXgT1/2yyNng4PGlyM=
+github.com/cpuguy83/go-md2man/v2 v2.0.0/go.mod h1:maD7wRr/U5Z6m/iR4s+kqSMx2CaBsrgA7czyZG/E6dU=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
@@ -116,6 +119,7 @@ github.com/liftbridge-io/go-liftbridge v0.0.0-20190628050631-26acc07f31ba/go.mod
 github.com/liftbridge-io/go-liftbridge v0.0.0-20190703015712-9f8cb1ad3118/go.mod h1:6b4+fIOp0J1KHgw109ZGIe9be876+PgptKvD5/pyktE=
 github.com/liftbridge-io/go-liftbridge v0.0.0-20190829224842-741ea51bbb75/go.mod h1:zYMcGL2bhQOjPqiL/fD1kkGH1oqeBs4hDZ/+K9JeNh8=
 github.com/liftbridge-io/go-liftbridge v0.0.0-20190831233708-6fbf530bb220/go.mod h1:nrRKe84l5pTHsFjq0UQRyrjTXz35ImgLDhCjS66RkMA=
+github.com/liftbridge-io/go-liftbridge v0.0.0-20191106171334-84163faf9fdd/go.mod h1:Q1PGCu9GUniz/0iHucxMwg2tiHwqhg8JrmIFOaPD88s=
 github.com/liftbridge-io/liftbridge v0.0.0-20190628061900-5f565727d49f/go.mod h1:DgUnOkzaVLgIOQ3W7ztMm0+xQmDaEM+tcgGCAdlZj8s=
 github.com/liftbridge-io/liftbridge v0.0.0-20190704001405-928a9d17c609 h1:NaKcAOPcEbPHVUXXHWuRYrKjnmArms5dAbe5xV0uZfM=
 github.com/liftbridge-io/liftbridge v0.0.0-20190704001405-928a9d17c609/go.mod h1:d9iQ/6VLp7paFMnNukU2nV1PnNjkz2vpNQzYS4zIy8Y=
@@ -123,6 +127,8 @@ github.com/liftbridge-io/liftbridge v0.0.0-20190831212313-ad1b5f9c2b17 h1:9nyNHT
 github.com/liftbridge-io/liftbridge v0.0.0-20190831212313-ad1b5f9c2b17/go.mod h1:hnwhdV70dIFgIKvzBJt9rOfce19kE2a3ZGaRgSQmNOs=
 github.com/liftbridge-io/liftbridge v0.0.0-20191101170542-6684dd2aa80f h1:wK695cDir4vj8kv0MB71rIEFXID0kuIg535GrvQUXak=
 github.com/liftbridge-io/liftbridge v0.0.0-20191101170542-6684dd2aa80f/go.mod h1:l/Y7oCEKS+evzr19nCjeatDJU7SHwtjh6uIYGULUJfE=
+github.com/liftbridge-io/liftbridge v0.0.0-20191106173932-5d89c897d5b0 h1:4pnJQ88if7mxBLsPFVMwepw/nffO2UilV1xN0hvivBI=
+github.com/liftbridge-io/liftbridge v0.0.0-20191106173932-5d89c897d5b0/go.mod h1:Ysh4YXyf7Fvdeid4QJNmyYqDRWwwMAXNmhV3IPb1l3M=
 github.com/liftbridge-io/liftbridge-api v0.0.0-20190910222614-5694b15f251d h1:yuAMJgvh7C/QPVAui2i+MF8X3wUzRPgdh/t0P9Gx/p4=
 github.com/liftbridge-io/liftbridge-api v0.0.0-20190910222614-5694b15f251d/go.mod h1:6IFEFZ4ncnOgeDVjSt0vh1lKNhlJ5YT9xnG1eRa9LC8=
 github.com/liftbridge-io/liftbridge-grpc v0.0.0-20190829220806-66e3ee4b7943 h1:7p6n1IhML9EYNhcdTci3haK09oP/e/TGMWN8DFVaxAE=
@@ -195,6 +201,10 @@ github.com/prometheus/procfs v0.0.0-20181005140218-185b4288413d/go.mod h1:c3At6R
 github.com/prometheus/procfs v0.0.0-20181204211112-1dc9a6cbc91a/go.mod h1:c3At6R/oaqEKCNdg8wHV1ftS6bRYblBhIjjI8uT2IGk=
 github.com/prometheus/procfs v0.0.2/go.mod h1:TjEm7ze935MbeOT/UhFTIMYKhuLP4wbCsTZCD3I8kEA=
 github.com/prometheus/procfs v0.0.3/go.mod h1:4A/X28fw3Fc593LaREMrKMqOKvUAntwMDaekg4FpcdQ=
+github.com/russross/blackfriday/v2 v2.0.1 h1:lPqVAte+HuHNfhJ/0LC98ESWRz8afy9tM/0RK8m9o+Q=
+github.com/russross/blackfriday/v2 v2.0.1/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
+github.com/shurcooL/sanitized_anchor_name v1.0.0 h1:PdmoCO6wvbs+7yrJyMORt4/BmY5IYyJwS/kOiWx8mHo=
+github.com/shurcooL/sanitized_anchor_name v1.0.0/go.mod h1:1NzhyTcUVG4SuEtjjoZeVRXNmyL/1OwPU0+IJeTBvfc=
 github.com/sirupsen/logrus v1.2.0/go.mod h1:LxeOpSwHxABJmUn/MG1IvRgCAasNZTLOkJPxbbu5VWo=
 github.com/sirupsen/logrus v1.4.2 h1:SPIRibHv4MatM3XXNO2BJeFLZwZ2LvZgfQ5+UNI2im4=
 github.com/sirupsen/logrus v1.4.2/go.mod h1:tLMulIdttU9McNUspp0xgXVQah82FyeX6MwdIuYE2rE=
@@ -209,6 +219,8 @@ github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81P
 github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926/go.mod h1:9ESjWnEqriFuLhtthL60Sar/7RFoluCcXsuvEwTV5KM=
 github.com/urfave/cli v1.20.0 h1:fDqGv3UG/4jbVl/QkFwEdddtEDjh/5Ov6X+0B/3bPaw=
 github.com/urfave/cli v1.20.0/go.mod h1:70zkFmudgCuE/ngEzBv17Jvp/497gISqfk5gWijbERA=
+github.com/urfave/cli v1.22.1 h1:+mkCCcOFKPnCmVYVcURKps1Xe+3zP90gSYGNfRkjoIY=
+github.com/urfave/cli v1.22.1/go.mod h1:Gos4lmkARVdJ6EkW0WaNv/tZAAMe9V7XWyB60NtXRu0=
 go.opencensus.io v0.21.0/go.mod h1:mSImk1erAIZhrmZN+AvHh14ztQfjbGwt4TtuofqLduU=
 go.opencensus.io v0.22.0/go.mod h1:+kGneAE2xo2IficOXnaByMWTGM9T73dGwxeWcUqIpI8=
 golang.org/x/crypto v0.0.0-20180904163835-0709b304e793/go.mod h1:6SG95UA2DQfeDnfUPMdvaQW0Q7yPrPDi9nlGo2tz2b4=
