@@ -11,7 +11,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/require"
 
-	proto "github.com/liftbridge-io/liftbridge-grpc/go"
+	proto "github.com/liftbridge-io/liftbridge-api/go"
 	"github.com/liftbridge-io/liftbridge/server"
 )
 
@@ -269,133 +269,6 @@ func TestClientDisconnectError(t *testing.T) {
 		require.Error(t, err)
 	case <-time.After(10 * time.Second):
 		t.Fatal("Did not receive expected error")
-	}
-}
-
-// Ensure the client resubscribes to the stream if the stream leader fails
-// over.
-// TODO: Make this test less flaky.
-func TestClientResubscribe(t *testing.T) {
-	defer cleanupStorage(t)
-
-	// Use a central NATS server.
-	ns := natsdTest.RunDefaultServer()
-	defer ns.Shutdown()
-
-	config1 := getTestConfig("a", true, 5050)
-	config1.Clustering.ReplicaMaxLeaderTimeout = 1100 * time.Millisecond
-	config1.Clustering.ReplicaFetchTimeout = time.Second
-	config1.Clustering.ReplicaMaxLagTime = 2 * time.Second
-	s1 := runServerWithConfig(t, config1)
-	defer s1.Stop()
-
-	config2 := getTestConfig("b", false, 5051)
-	config2.Clustering.ReplicaMaxLeaderTimeout = 1100 * time.Millisecond
-	config2.Clustering.ReplicaFetchTimeout = time.Second
-	config2.Clustering.ReplicaMaxLagTime = 2 * time.Second
-	s2 := runServerWithConfig(t, config2)
-	defer s2.Stop()
-
-	config3 := getTestConfig("c", false, 5052)
-	config3.Clustering.ReplicaMaxLeaderTimeout = 1100 * time.Millisecond
-	config3.Clustering.ReplicaFetchTimeout = time.Second
-	config3.Clustering.ReplicaMaxLagTime = 2 * time.Second
-	s3 := runServerWithConfig(t, config3)
-	defer s3.Stop()
-
-	servers := map[*server.Config]*server.Server{
-		config1: s1,
-		config2: s2,
-		config3: s3,
-	}
-
-	c, err := Connect([]string{"localhost:5050", "localhost:5051", "localhost:5052"})
-	require.NoError(t, err)
-	defer c.Close()
-
-	// Wait for leader to be elected.
-	getMetadataLeader(t, 10*time.Second, s1, s2, s3)
-
-	subject := "foo"
-	name := "bar"
-	require.NoError(t, c.CreateStream(context.Background(), subject, name, ReplicationFactor(3)))
-
-	count := 5
-	expected := make([]*message, count)
-	for i := 0; i < count; i++ {
-		expected[i] = &message{
-			Key:    []byte("test"),
-			Value:  []byte(strconv.Itoa(i)),
-			Offset: int64(i),
-		}
-	}
-
-	for i := 0; i < count; i++ {
-		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-		_, err := c.Publish(ctx, "foo", expected[i].Value,
-			Key(expected[i].Key), AckPolicyAll())
-		require.NoError(t, err)
-	}
-
-	// Subscribe from the beginning.
-	recv := 0
-	ch1 := make(chan struct{})
-	ch2 := make(chan struct{})
-	err = c.Subscribe(context.Background(), "bar", func(msg *proto.Message, err error) {
-		require.NoError(t, err)
-		expect := expected[recv]
-		assertMsg(t, expect, msg)
-		recv++
-		if recv == count {
-			close(ch1)
-			return
-		}
-		if recv == 2*count {
-			close(ch2)
-			return
-		}
-	}, StartAtEarliestReceived())
-	require.NoError(t, err)
-
-	// Wait to read back published messages.
-	select {
-	case <-ch1:
-	case <-time.After(10 * time.Second):
-		t.Fatal("Did not receive all expected messages")
-	}
-
-	// TODO: This is needed until Liftbridge issue #38 is fixed.
-	time.Sleep(time.Second)
-
-	// Kill the stream leader.
-	leader, leaderConfig := getPartitionLeader(t, 10*time.Second, name, 0, c.(*client), servers)
-	leader.Stop()
-
-	// Wait for new leader to be elected.
-	delete(servers, leaderConfig)
-	_, leaderConfig = getPartitionLeader(t, 10*time.Second, name, 0, c.(*client), servers)
-
-	// Publish some more.
-	for i := 0; i < count; i++ {
-		expected = append(expected, &message{
-			Key:    []byte("blah"),
-			Value:  []byte(strconv.Itoa(i + count)),
-			Offset: int64(i + count),
-		})
-	}
-
-	for i := 0; i < count; i++ {
-		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-		_, err := c.Publish(ctx, "foo", expected[i+count].Value,
-			Key(expected[i+count].Key), AckPolicyAll())
-		require.NoError(t, err)
-	}
-
-	// Wait to read the new messages.
-	select {
-	case <-ch2:
-	case <-time.After(10 * time.Second):
-		t.Fatal("Did not receive all expected messages")
 	}
 }
 
@@ -781,9 +654,9 @@ func TestPublishPartitionByKey(t *testing.T) {
 	}
 
 	msgs := map[string]struct{}{
-		"0": struct{}{},
-		"1": struct{}{},
-		"2": struct{}{},
+		"0": {},
+		"1": {},
+		"2": {},
 	}
 
 	for i := 0; i < 3; i++ {
