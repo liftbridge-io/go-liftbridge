@@ -154,7 +154,7 @@ func TestClientSubscribe(t *testing.T) {
 
 	for i := 0; i < count; i++ {
 		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-		_, err := client.Publish(ctx, "foo", expected[i].Value, Key(expected[i].Key))
+		_, err := client.Publish(ctx, "bar", expected[i].Value, Key(expected[i].Key))
 		require.NoError(t, err)
 	}
 
@@ -196,7 +196,7 @@ func TestClientSubscribe(t *testing.T) {
 
 	for i := 0; i < count; i++ {
 		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-		_, err := client.Publish(ctx, "foo", expected[i+count].Value,
+		_, err := client.Publish(ctx, "bar", expected[i+count].Value,
 			Key(expected[i+count].Key))
 		require.NoError(t, err)
 	}
@@ -344,7 +344,7 @@ func TestClientPublishAck(t *testing.T) {
 
 	for i := 0; i < count; i++ {
 		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-		ack, err := client.Publish(ctx, "foo", expected[i].Value,
+		ack, err := client.Publish(ctx, "bar", expected[i].Value,
 			Key(expected[i].Key), AckPolicyLeader())
 		require.NoError(t, err)
 		require.NotNil(t, ack)
@@ -407,7 +407,7 @@ func TestClientPublishNoAck(t *testing.T) {
 	}
 
 	for i := 0; i < count; i++ {
-		ack, err := client.Publish(context.Background(), "foo", expected[i].Value,
+		ack, err := client.Publish(context.Background(), "bar", expected[i].Value,
 			Key(expected[i].Key))
 		require.NoError(t, err)
 		require.Nil(t, ack)
@@ -457,7 +457,7 @@ func TestClientPublishHeaders(t *testing.T) {
 
 	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
 
-	ack, err := client.Publish(context.Background(), "foo",
+	ack, err := client.Publish(context.Background(), "bar",
 		[]byte("hello"),
 		Header("a", []byte("header")),
 		Headers(map[string][]byte{"some": []byte("more")}))
@@ -544,7 +544,7 @@ func TestPublishToPartition(t *testing.T) {
 	)
 	require.NoError(t, client.CreateStream(context.Background(), subject, name, Partitions(3)))
 
-	_, err = client.Publish(context.Background(), subject, []byte("hello"), ToPartition(1))
+	_, err = client.Publish(context.Background(), name, []byte("hello"), ToPartition(1))
 	require.NoError(t, err)
 
 	recv := make(chan *proto.Message)
@@ -588,7 +588,7 @@ func TestPublishPartitionByRoundRobin(t *testing.T) {
 	require.NoError(t, client.CreateStream(context.Background(), subject, name, Partitions(3)))
 
 	for i := 0; i < 3; i++ {
-		_, err = client.Publish(context.Background(), subject, []byte(strconv.Itoa(i)), PartitionByRoundRobin())
+		_, err = client.Publish(context.Background(), name, []byte(strconv.Itoa(i)), PartitionByRoundRobin())
 		require.NoError(t, err)
 	}
 
@@ -646,7 +646,7 @@ func TestPublishPartitionByKey(t *testing.T) {
 	require.NoError(t, client.CreateStream(context.Background(), subject, name, Partitions(3)))
 
 	for i := 0; i < 3; i++ {
-		_, err = client.Publish(context.Background(), subject, []byte(strconv.Itoa(i)),
+		_, err = client.Publish(context.Background(), name, []byte(strconv.Itoa(i)),
 			Key([]byte(strconv.Itoa(i))),
 			PartitionByKey(),
 		)
@@ -750,12 +750,12 @@ func ExampleClient_publish() {
 	defer client.Close()
 
 	// Publish message to base stream partition.
-	if _, err := client.Publish(context.Background(), "foo", []byte("hello")); err != nil {
+	if _, err := client.Publish(context.Background(), "foo-stream", []byte("hello")); err != nil {
 		panic(err)
 	}
 
 	// Publish message to stream partition based on key.
-	if _, err := client.Publish(context.Background(), "bar", []byte("hello"),
+	if _, err := client.Publish(context.Background(), "bar-stream", []byte("hello"),
 		Key([]byte("key")), PartitionByKey(),
 	); err != nil {
 		panic(err)

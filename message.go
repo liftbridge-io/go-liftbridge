@@ -19,7 +19,7 @@ var (
 // Partitioner is used to map a message to a stream partition.
 type Partitioner interface {
 	// Partition computes the partition number for a given message.
-	Partition(msg *proto.Message, metadata *Metadata) int32
+	Partition(stream string, key, value []byte, metadata *Metadata) int32
 }
 
 // keyPartitioner is an implementation of Partitioner which partitions messages
@@ -27,18 +27,13 @@ type Partitioner interface {
 type keyPartitioner struct{}
 
 // Partition computes the partition number for a given message by hashing the
-// key and modding by the number of partitions for the first stream found with
-// the subject of the message. This does not work with streams containing
-// wildcards in their subjects, e.g. "foo.*", since this matches on the subject
-// literal of the published message. This also has undefined behavior if there
-// are multiple streams for the given subject.
-func (k *keyPartitioner) Partition(msg *proto.Message, metadata *Metadata) int32 {
-	key := msg.Key
+// key and modding by the number of stream partitions.
+func (k *keyPartitioner) Partition(stream string, key, value []byte, metadata *Metadata) int32 {
 	if key == nil {
 		key = []byte("")
 	}
 
-	partitions := getPartitionCount(msg.Subject, metadata)
+	partitions := metadata.PartitionCountForStream(stream)
 	if partitions == 0 {
 		return 0
 	}
@@ -46,7 +41,7 @@ func (k *keyPartitioner) Partition(msg *proto.Message, metadata *Metadata) int32
 	return int32(hasher(key)) % partitions
 }
 
-type subjectCounter struct {
+type streamCounter struct {
 	sync.Mutex
 	count int32
 }
@@ -55,32 +50,28 @@ type subjectCounter struct {
 // messages in a round-robin fashion.
 type roundRobinPartitioner struct {
 	sync.Mutex
-	subjectCounterMap map[string]*subjectCounter
+	streamCounterMap map[string]*streamCounter
 }
 
 func newRoundRobinPartitioner() Partitioner {
 	return &roundRobinPartitioner{
-		subjectCounterMap: make(map[string]*subjectCounter),
+		streamCounterMap: make(map[string]*streamCounter),
 	}
 }
 
 // Partition computes the partition number for a given message in a round-robin
-// fashion by atomically incrementing a counter for the message subject and
-// modding by the number of partitions for the first stream found with the
-// subject. This does not work with streams containing wildcards in their
-// subjects, e.g. "foo.*", since this matches on the subject literal of the
-// published message. This also has undefined behavior if there are multiple
-// streams for the given subject.
-func (r *roundRobinPartitioner) Partition(msg *proto.Message, metadata *Metadata) int32 {
-	partitions := getPartitionCount(msg.Subject, metadata)
+// fashion by atomically incrementing a counter for the message stream and
+// modding by the number of stream partitions.
+func (r *roundRobinPartitioner) Partition(stream string, key, value []byte, metadata *Metadata) int32 {
+	partitions := metadata.PartitionCountForStream(stream)
 	if partitions == 0 {
 		return 0
 	}
 	r.Lock()
-	counter, ok := r.subjectCounterMap[msg.Subject]
+	counter, ok := r.streamCounterMap[stream]
 	if !ok {
-		counter = new(subjectCounter)
-		r.subjectCounterMap[msg.Subject] = counter
+		counter = new(streamCounter)
+		r.streamCounterMap[stream] = counter
 	}
 	r.Unlock()
 	counter.Lock()
@@ -88,17 +79,6 @@ func (r *roundRobinPartitioner) Partition(msg *proto.Message, metadata *Metadata
 	counter.count++
 	counter.Unlock()
 	return count % partitions
-}
-
-func getPartitionCount(subject string, metadata *Metadata) int32 {
-	counts := metadata.PartitionCountsForSubject(subject)
-
-	// Get the first matching stream's count.
-	for _, count := range counts {
-		return count
-	}
-
-	return 0
 }
 
 // MessageOptions are used to configure optional settings for a Message.

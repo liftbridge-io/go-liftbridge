@@ -492,7 +492,7 @@ func (c *client) Subscribe(ctx context.Context, streamName string, handler Handl
 // first ack is received. If the ack is not received in time, a
 // DeadlineExceeded status code is returned. If an AckPolicy and deadline are
 // configured, this returns the first Ack on success, otherwise it returns nil.
-func (c *client) Publish(ctx context.Context, subject string, value []byte,
+func (c *client) Publish(ctx context.Context, stream string, value []byte,
 	options ...MessageOption) (*proto.Ack, error) {
 
 	opts := &MessageOptions{Headers: make(map[string][]byte)}
@@ -500,28 +500,22 @@ func (c *client) Publish(ctx context.Context, subject string, value []byte,
 		opt(opts)
 	}
 
-	msg := &proto.Message{
-		Subject:       subject,
-		Key:           opts.Key,
-		Value:         value,
-		AckInbox:      opts.AckInbox,
-		CorrelationId: opts.CorrelationID,
-		AckPolicy:     opts.AckPolicy,
-	}
-
 	// Determine which partition to publish to.
-	partition, err := c.partition(ctx, msg, opts)
+	partition, err := c.partition(ctx, stream, opts.Key, value, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	// Publish to the appropriate partition subject.
-	if partition > 0 {
-		msg.Subject = fmt.Sprintf("%s.%d", msg.Subject, partition)
-	}
-
 	var (
-		req = &proto.PublishRequest{Message: msg}
+		req = &proto.PublishRequest{
+			Stream:        stream,
+			Partition:     partition,
+			Key:           opts.Key,
+			Value:         value,
+			AckInbox:      opts.AckInbox,
+			CorrelationId: opts.CorrelationID,
+			AckPolicy:     opts.AckPolicy,
+		}
 		ack *proto.Ack
 	)
 	err = c.doResilientRPC(func(client proto.APIClient) error {
@@ -544,32 +538,34 @@ func (c *client) FetchMetadata(ctx context.Context) (*Metadata, error) {
 // partition was explicitly provided, it will be returned. If a Partitioner was
 // provided, it will be used to compute the partition. Otherwise, 0 will be
 // returned.
-func (c *client) partition(ctx context.Context, msg *proto.Message, opts *MessageOptions) (int32, error) {
+func (c *client) partition(ctx context.Context, stream string, key, value []byte,
+	opts *MessageOptions) (int32, error) {
+
 	var partition int32
 	// If a partition is explicitly provided, use it.
 	if opts.Partition != nil {
 		partition = *opts.Partition
 	} else if opts.Partitioner != nil {
 		// Make sure we have metadata for the stream and, if not, update it.
-		metadata, err := c.waitForSubjectMetadata(ctx, msg.Subject)
+		metadata, err := c.waitForStreamMetadata(ctx, stream)
 		if err != nil {
 			return 0, err
 		}
-		partition = opts.Partitioner.Partition(msg, metadata)
+		partition = opts.Partitioner.Partition(stream, key, value, metadata)
 	}
 	return partition, nil
 }
 
-func (c *client) waitForSubjectMetadata(ctx context.Context, subject string) (*Metadata, error) {
+func (c *client) waitForStreamMetadata(ctx context.Context, stream string) (*Metadata, error) {
 	for i := 0; i < 5; i++ {
 		metadata := c.metadata.get()
-		if metadata.hasSubjectMetadata(subject) {
+		if metadata.hasStreamMetadata(stream) {
 			return metadata, nil
 		}
 		time.Sleep(50 * time.Millisecond)
 		c.metadata.update(ctx)
 	}
-	return nil, fmt.Errorf("no metadata for stream with subject %s", subject)
+	return nil, fmt.Errorf("no metadata for stream %s", stream)
 }
 
 func (c *client) subscribe(ctx context.Context, stream string,
