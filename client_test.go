@@ -678,6 +678,55 @@ func TestPublishPartitionByKey(t *testing.T) {
 	}
 }
 
+// Ensure PublishToSubject publishes directly to a NATS subject and all streams
+// attached to the subject receive the message.
+func TestPublishToSubject(t *testing.T) {
+	defer cleanupStorage(t)
+
+	// Use a central NATS server.
+	ns := natsdTest.RunDefaultServer()
+	defer ns.Shutdown()
+
+	config := getTestConfig("a", true, 5050)
+	s := runServerWithConfig(t, config)
+	defer s.Stop()
+
+	client, err := Connect([]string{"localhost:5050"})
+	require.NoError(t, err)
+	defer client.Close()
+
+	// Wait for server to elect itself leader.
+	getMetadataLeader(t, 10*time.Second, s)
+
+	var (
+		subject = "foo"
+		stream1 = "stream1"
+		stream2 = "stream2"
+		streams = []string{stream1, stream2}
+	)
+	require.NoError(t, client.CreateStream(context.Background(), subject, stream1))
+	require.NoError(t, client.CreateStream(context.Background(), subject, stream2))
+
+	_, err = client.PublishToSubject(context.Background(), subject, []byte("hello"))
+	require.NoError(t, err)
+
+	// Ensure both streams received the message.
+	for _, stream := range streams {
+		recv := make(chan *proto.Message)
+		err = client.Subscribe(context.Background(), stream, func(msg *proto.Message, err error) {
+			require.NoError(t, err)
+			recv <- msg
+		}, StartAtEarliestReceived())
+		require.NoError(t, err)
+
+		select {
+		case <-recv:
+		case <-time.After(5 * time.Second):
+			require.Fail(t, "Did not receive expected message")
+		}
+	}
+}
+
 func ExampleConnect() {
 	addr := "localhost:9292"
 	client, err := Connect([]string{addr})

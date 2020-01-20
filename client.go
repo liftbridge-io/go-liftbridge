@@ -142,13 +142,33 @@ type Client interface {
 	// a cancelable Context to close a subscription.
 	Subscribe(ctx context.Context, stream string, handler Handler, opts ...SubscriptionOption) error
 
-	// Publish publishes a new message to the NATS subject. If the AckPolicy is
-	// not NONE and a deadline is provided, this will synchronously block until
-	// the first ack is received. If the ack is not received in time, a
-	// DeadlineExceeded status code is returned. If an AckPolicy and deadline
-	// are configured, this returns the first Ack on success, otherwise it
-	// returns nil.
-	Publish(ctx context.Context, subject string, value []byte, opts ...MessageOption) (*proto.Ack, error)
+	// Publish publishes a new message to the Liftbridge stream. The partition
+	// that gets published to is determined by the provided partition or
+	// Partitioner passed through MessageOptions, if any. If a partition or
+	// Partitioner is not provided, this defaults to the base partition. This
+	// partition determines the underlying NATS subject that gets published to.
+	// To publish directly to a spedcific NATS subject, use the low-level
+	// PublishToSubject API.
+	//
+	// If the AckPolicy is not NONE and a deadline is provided, this will
+	// synchronously block until the ack is received. If the ack is not
+	// received in time, a DeadlineExceeded status code is returned. If an
+	// AckPolicy and deadline are configured, this returns the Ack on success,
+	// otherwise it returns nil.
+	Publish(ctx context.Context, stream string, value []byte, opts ...MessageOption) (*proto.Ack, error)
+
+	// Publish publishes a new message to the NATS subject. Note that because
+	// this publishes directly to a subject, there may be multiple (or no)
+	// streams that receive the message. As a result, MessageOptions related to
+	// partitioning will be ignored. To publish at the stream/partition level,
+	// use the high-level Publish API.
+	//
+	// If the AckPolicy is not NONE and a deadline is provided, this will
+	// synchronously block until the first ack is received. If the ack is not
+	// received in time, a DeadlineExceeded status code is returned. If an
+	// AckPolicy and deadline are configured, this returns the first Ack on
+	// success, otherwise it returns nil.
+	PublishToSubject(ctx context.Context, subject string, value []byte, opts ...MessageOption) (*proto.Ack, error)
 
 	// FetchMetadata returns cluster metadata including broker and stream
 	// information.
@@ -487,11 +507,18 @@ func (c *client) Subscribe(ctx context.Context, streamName string, handler Handl
 	return nil
 }
 
-// Publish publishes a new message to the NATS subject. If the AckPolicy is not
-// NONE and a deadline is provided, this will synchronously block until the
-// first ack is received. If the ack is not received in time, a
-// DeadlineExceeded status code is returned. If an AckPolicy and deadline are
-// configured, this returns the first Ack on success, otherwise it returns nil.
+// Publish publishes a new message to the Liftbridge stream. The partition that
+// gets published to is determined by the provided partition or Partitioner
+// passed through MessageOptions, if any. If a partition or Partitioner is not
+// provided, this defaults to the base partition. This partition determines the
+// underlying NATS subject that gets published to.  To publish directly to a
+// spedcific NATS subject, use the low-level PublishToSubject API.
+//
+// If the AckPolicy is not NONE and a deadline is provided, this will
+// synchronously block until the ack is received. If the ack is not received in
+// time, a DeadlineExceeded status code is returned. If an AckPolicy and
+// deadline are configured, this returns the Ack on success, otherwise it
+// returns nil.
 func (c *client) Publish(ctx context.Context, stream string, value []byte,
 	options ...MessageOption) (*proto.Ack, error) {
 
@@ -506,19 +533,59 @@ func (c *client) Publish(ctx context.Context, stream string, value []byte,
 		return nil, err
 	}
 
-	var (
-		req = &proto.PublishRequest{
-			Stream:        stream,
-			Partition:     partition,
-			Key:           opts.Key,
-			Value:         value,
-			AckInbox:      opts.AckInbox,
-			CorrelationId: opts.CorrelationID,
-			AckPolicy:     opts.AckPolicy,
-		}
-		ack *proto.Ack
-	)
-	err = c.doResilientRPC(func(client proto.APIClient) error {
+	req := &proto.PublishRequest{
+		Stream:        stream,
+		Partition:     partition,
+		Key:           opts.Key,
+		Value:         value,
+		AckInbox:      opts.AckInbox,
+		CorrelationId: opts.CorrelationID,
+		AckPolicy:     opts.AckPolicy,
+	}
+
+	return c.publish(ctx, req)
+}
+
+// Publish publishes a new message to the NATS subject. Note that because this
+// publishes directly to a subject, there may be multiple (or no) streams that
+// receive the message. As a result, MessageOptions related to partitioning
+// will be ignored. To publish at the stream/partition level, use the
+// high-level Publish API.
+//
+// If the AckPolicy is not NONE and a deadline is provided, this will
+// synchronously block until the first ack is received. If the ack is not
+// received in time, a DeadlineExceeded status code is returned. If an
+// AckPolicy and deadline are configured, this returns the first Ack on
+// success, otherwise it returns nil.
+func (c *client) PublishToSubject(ctx context.Context, subject string, value []byte,
+	options ...MessageOption) (*proto.Ack, error) {
+
+	opts := &MessageOptions{Headers: make(map[string][]byte)}
+	for _, opt := range options {
+		opt(opts)
+	}
+
+	req := &proto.PublishRequest{
+		Subject:       subject,
+		Key:           opts.Key,
+		Value:         value,
+		AckInbox:      opts.AckInbox,
+		CorrelationId: opts.CorrelationID,
+		AckPolicy:     opts.AckPolicy,
+	}
+
+	return c.publish(ctx, req)
+}
+
+// FetchMetadata returns cluster metadata including broker and stream
+// information.
+func (c *client) FetchMetadata(ctx context.Context) (*Metadata, error) {
+	return c.metadata.update(ctx)
+}
+
+func (c *client) publish(ctx context.Context, req *proto.PublishRequest) (*proto.Ack, error) {
+	var ack *proto.Ack
+	err := c.doResilientRPC(func(client proto.APIClient) error {
 		resp, err := client.Publish(ctx, req)
 		if err == nil {
 			ack = resp.Ack
@@ -526,12 +593,6 @@ func (c *client) Publish(ctx context.Context, stream string, value []byte,
 		return err
 	})
 	return ack, err
-}
-
-// FetchMetadata returns cluster metadata including broker and stream
-// information.
-func (c *client) FetchMetadata(ctx context.Context) (*Metadata, error) {
-	return c.metadata.update(ctx)
 }
 
 // partition determines the partition ID to publish the message to. If a
