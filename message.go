@@ -2,6 +2,8 @@ package liftbridge
 
 import (
 	"bytes"
+	"encoding/binary"
+	"fmt"
 	"hash/crc32"
 	"sync"
 	"time"
@@ -10,11 +12,17 @@ import (
 )
 
 var (
-	envelopeCookie        = []byte("LIFT")
-	envelopeCookieLen     = len(envelopeCookie)
-	partitionByKey        = new(keyPartitioner)
-	partitionByRoundRobin = newRoundRobinPartitioner()
-	hasher                = crc32.ChecksumIEEE
+	envelopeMagicNumber    = []byte{0xB9, 0x0E, 0x43, 0xB4}
+	envelopeMagicNumberLen = len(envelopeMagicNumber)
+	partitionByKey         = new(keyPartitioner)
+	partitionByRoundRobin  = newRoundRobinPartitioner()
+	hasher                 = crc32.ChecksumIEEE
+	crc32cTable            = crc32.MakeTable(crc32.Castagnoli)
+)
+
+const (
+	protoV0      = 0x00
+	minHeaderLen = 8
 )
 
 // AckPolicy controls the behavior of message acknowledgements.
@@ -408,6 +416,7 @@ func PartitionByRoundRobin() MessageOption {
 // NewMessage returns a serialized message for the given payload and options.
 func NewMessage(value []byte, options ...MessageOption) []byte {
 	opts := &MessageOptions{Headers: make(map[string][]byte)}
+	// TODO: Implement option for CRC32.
 	for _, opt := range options {
 		opt(opts)
 	}
@@ -423,9 +432,26 @@ func NewMessage(value []byte, options ...MessageOption) []byte {
 		panic(err)
 	}
 
-	buf := make([]byte, envelopeCookieLen+len(msg))
-	copy(buf[0:], envelopeCookie)
-	copy(buf[envelopeCookieLen:], msg)
+	var (
+		buf       = make([]byte, envelopeMagicNumberLen+4+len(msg))
+		pos       = 0
+		headerLen = minHeaderLen
+	)
+	copy(buf[pos:], envelopeMagicNumber)
+	pos += envelopeMagicNumberLen
+	buf[pos] = protoV0 // Version
+	pos++
+	buf[pos] = byte(headerLen) // HeaderLen
+	pos++
+	buf[pos] = 0x00 // Flags
+	pos++
+	buf[pos] = 0x00 // Reserved
+	pos++
+	if pos != headerLen {
+		panic(fmt.Sprintf("Payload position (%d) does not match expected HeaderLen (%d)",
+			pos, headerLen))
+	}
+	copy(buf[pos:], msg)
 	return buf
 }
 
@@ -439,21 +465,59 @@ func UnmarshalAck(data []byte) (Ack, error) {
 	return newProtoAck(ack), err
 }
 
-// UnmarshalMessage deserializes a message from the given byte slice.  It
+// UnmarshalMessage deserializes a message from the given byte slice. It
 // returns a bool indicating if the given data was actually a Message or not.
 func UnmarshalMessage(data []byte) (Message, bool) {
-	if len(data) <= envelopeCookieLen {
+	if len(data) <= minHeaderLen {
 		return nil, false
 	}
-	if !bytes.Equal(data[:envelopeCookieLen], envelopeCookie) {
+	if !bytes.Equal(data[:envelopeMagicNumberLen], envelopeMagicNumber) {
 		return nil, false
 	}
+	if data[4] != protoV0 {
+		return nil, false
+	}
+
+	var (
+		headerLen = int(data[5])
+		flags     = data[6]
+		payload   = data[headerLen:]
+	)
+
+	// Check CRC.
+	if hasBit(flags, 0) {
+		// Make sure there is a CRC present.
+		if headerLen != minHeaderLen+4 {
+			return nil, false
+		}
+		crc := binary.BigEndian.Uint32(data[minHeaderLen:headerLen])
+		if crc32.Checksum(payload, crc32cTable) != crc {
+			return nil, false
+		}
+	}
+
 	var (
 		msg = &proto.Message{}
-		err = msg.Unmarshal(data[envelopeCookieLen:])
+		err = msg.Unmarshal(payload)
 	)
 	if err != nil {
 		return nil, false
 	}
 	return newProtoMessage(msg), true
+}
+
+func setBit(n byte, pos uint8) byte {
+	n |= (1 << pos)
+	return n
+}
+
+func clearBit(n byte, pos uint8) byte {
+	mask := byte(^(1 << pos))
+	n &= mask
+	return n
+}
+
+func hasBit(n byte, pos uint8) bool {
+	val := n & (1 << pos)
+	return (val > 0)
 }

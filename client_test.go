@@ -116,7 +116,27 @@ func TestUnmarshalMessageError(t *testing.T) {
 	_, ok = UnmarshalMessage([]byte("blahh"))
 	require.False(t, ok)
 
-	_, ok = UnmarshalMessage([]byte("LIFTblah"))
+	buf := make([]byte, 8)
+	copy(buf, envelopeMagicNumber)
+	copy(buf[envelopeMagicNumberLen:], []byte("blah"))
+	_, ok = UnmarshalMessage(buf)
+	require.False(t, ok)
+
+	// CRC flag set with no CRC present.
+	msg := NewMessage([]byte("hello"))
+	msg[6] = setBit(msg[6], 0)
+	_, ok = UnmarshalMessage(msg)
+	require.False(t, ok)
+
+	// CRC flag set with invalid CRC.
+	msg = NewMessage([]byte("hello"))
+	msg[6] = setBit(msg[6], 0)
+	buf = make([]byte, len(msg)+4)
+	copy(buf, msg[:8])
+	buf[8] = byte(32)
+	copy(buf[12:], msg[8:])
+	buf[5] = byte(12)
+	_, ok = UnmarshalMessage(buf)
 	require.False(t, ok)
 }
 
