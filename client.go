@@ -154,7 +154,7 @@ type Client interface {
 	// Partitioner passed through MessageOptions, if any. If a partition or
 	// Partitioner is not provided, this defaults to the base partition. This
 	// partition determines the underlying NATS subject that gets published to.
-	// To publish directly to a spedcific NATS subject, use the low-level
+	// To publish directly to a specific NATS subject, use the low-level
 	// PublishToSubject API.
 	//
 	// If the AckPolicy is not NONE and a deadline is provided, this will
@@ -164,14 +164,14 @@ type Client interface {
 	// otherwise it returns nil.
 	Publish(ctx context.Context, stream string, value []byte, opts ...MessageOption) (Ack, error)
 
-	// Publish publishes a new message to the NATS subject. Note that because
-	// this publishes directly to a subject, there may be multiple (or no)
-	// streams that receive the message. As a result, MessageOptions related to
-	// partitioning will be ignored. To publish at the stream/partition level,
-	// use the high-level Publish API.
+	// PublishToSubject publishes a new message to the NATS subject. Note that
+	// because this publishes directly to a subject, there may be multiple (or
+	// no) streams that receive the message. As a result, MessageOptions
+	// related to partitioning will be ignored. To publish at the
+	// stream/partition level, use the high-level Publish API.
 	//
 	// If the AckPolicy is not NONE and a deadline is provided, this will
-	// synchronously block until the first ack is received. If the ack is not
+	// synchronously block until the first ack is received. If an ack is not
 	// received in time, a DeadlineExceeded status code is returned. If an
 	// AckPolicy and deadline are configured, this returns the first Ack on
 	// success, otherwise it returns nil.
@@ -553,14 +553,14 @@ func (c *client) Publish(ctx context.Context, stream string, value []byte,
 	return c.publish(ctx, req)
 }
 
-// Publish publishes a new message to the NATS subject. Note that because this
-// publishes directly to a subject, there may be multiple (or no) streams that
-// receive the message. As a result, MessageOptions related to partitioning
-// will be ignored. To publish at the stream/partition level, use the
-// high-level Publish API.
+// PublishToSubject publishes a new message to the NATS subject. Note that
+// because this publishes directly to a subject, there may be multiple (or no)
+// streams that receive the message. As a result, MessageOptions related to
+// partitioning will be ignored. To publish at the stream/partition level, use
+// the high-level Publish API.
 //
 // If the AckPolicy is not NONE and a deadline is provided, this will
-// synchronously block until the first ack is received. If the ack is not
+// synchronously block until the first ack is received. If an ack is not
 // received in time, a DeadlineExceeded status code is returned. If an
 // AckPolicy and deadline are configured, this returns the first Ack on
 // success, otherwise it returns nil.
