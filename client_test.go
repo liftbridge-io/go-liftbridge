@@ -21,10 +21,10 @@ type message struct {
 	Offset int64
 }
 
-func assertMsg(t *testing.T, expected *message, msg *proto.Message) {
-	require.Equal(t, expected.Offset, msg.Offset)
-	require.Equal(t, expected.Key, msg.Key)
-	require.Equal(t, expected.Value, msg.Value)
+func assertMsg(t *testing.T, expected *message, msg Message) {
+	require.Equal(t, expected.Offset, msg.Offset())
+	require.Equal(t, expected.Key, msg.Key())
+	require.Equal(t, expected.Value, msg.Value())
 }
 
 func getPartitionLeader(t *testing.T, timeout time.Duration, name string, partitionID int32,
@@ -77,7 +77,10 @@ func TestUnmarshalAck(t *testing.T) {
 	require.NoError(t, err)
 	actual, err := UnmarshalAck(data)
 	require.NoError(t, err)
-	require.Equal(t, ack, actual)
+	require.Equal(t, ack.Stream, actual.Stream())
+	require.Equal(t, ack.MsgSubject, actual.MessageSubject())
+	require.Equal(t, ack.Offset, actual.Offset())
+	require.Equal(t, ack.AckInbox, actual.AckInbox())
 }
 
 func TestUnmarshalAckError(t *testing.T) {
@@ -99,11 +102,11 @@ func TestNewMessageUnmarshal(t *testing.T) {
 	)
 	actual, ok := UnmarshalMessage(msg)
 	require.True(t, ok)
-	require.Equal(t, key, actual.Key)
-	require.Equal(t, value, actual.Value)
-	require.Equal(t, ackInbox, actual.AckInbox)
-	require.Equal(t, proto.AckPolicy_NONE, actual.AckPolicy)
-	require.Equal(t, "123", actual.CorrelationId)
+	require.Equal(t, key, actual.Key())
+	require.Equal(t, value, actual.Value())
+	require.Equal(t, ackInbox, actual.AckInbox())
+	require.Equal(t, AckPolicy(proto.AckPolicy_NONE), actual.AckPolicy())
+	require.Equal(t, "123", actual.CorrelationID())
 }
 
 func TestUnmarshalMessageError(t *testing.T) {
@@ -162,7 +165,7 @@ func TestClientSubscribe(t *testing.T) {
 	recv := 0
 	ch1 := make(chan struct{})
 	ch2 := make(chan struct{})
-	err = client.Subscribe(context.Background(), "bar", func(msg *proto.Message, err error) {
+	err = client.Subscribe(context.Background(), "bar", func(msg Message, err error) {
 		require.NoError(t, err)
 		expect := expected[recv]
 		assertMsg(t, expect, msg)
@@ -229,7 +232,7 @@ func TestClientCloseNoError(t *testing.T) {
 
 	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
 
-	err = client.Subscribe(context.Background(), "bar", func(msg *proto.Message, err error) {
+	err = client.Subscribe(context.Background(), "bar", func(msg Message, err error) {
 		require.NoError(t, err)
 	})
 	require.NoError(t, err)
@@ -258,7 +261,7 @@ func TestClientDisconnectError(t *testing.T) {
 	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
 
 	ch := make(chan error)
-	err = client.Subscribe(context.Background(), "bar", func(msg *proto.Message, err error) {
+	err = client.Subscribe(context.Background(), "bar", func(msg Message, err error) {
 		ch <- err
 	})
 
@@ -295,7 +298,7 @@ func TestClientResubscribeFail(t *testing.T) {
 	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
 
 	ch := make(chan error)
-	err = client.Subscribe(context.Background(), "bar", func(msg *proto.Message, err error) {
+	err = client.Subscribe(context.Background(), "bar", func(msg Message, err error) {
 		ch <- err
 	})
 	require.NoError(t, err)
@@ -348,13 +351,13 @@ func TestClientPublishAck(t *testing.T) {
 			Key(expected[i].Key), AckPolicyLeader())
 		require.NoError(t, err)
 		require.NotNil(t, ack)
-		require.Equal(t, "bar", ack.Stream)
+		require.Equal(t, "bar", ack.Stream())
 	}
 
 	// Subscribe from the beginning.
 	recv := 0
 	ch := make(chan struct{})
-	err = client.Subscribe(context.Background(), "bar", func(msg *proto.Message, err error) {
+	err = client.Subscribe(context.Background(), "bar", func(msg Message, err error) {
 		require.NoError(t, err)
 		expect := expected[recv]
 		assertMsg(t, expect, msg)
@@ -416,7 +419,7 @@ func TestClientPublishNoAck(t *testing.T) {
 	// Subscribe from the beginning.
 	recv := 0
 	ch := make(chan struct{})
-	err = client.Subscribe(context.Background(), "bar", func(msg *proto.Message, err error) {
+	err = client.Subscribe(context.Background(), "bar", func(msg Message, err error) {
 		require.NoError(t, err)
 		expect := expected[recv]
 		assertMsg(t, expect, msg)
@@ -465,8 +468,8 @@ func TestClientPublishHeaders(t *testing.T) {
 	require.Nil(t, ack)
 
 	// Subscribe from the beginning.
-	ch := make(chan *proto.Message)
-	err = client.Subscribe(context.Background(), "bar", func(msg *proto.Message, err error) {
+	ch := make(chan Message)
+	err = client.Subscribe(context.Background(), "bar", func(msg Message, err error) {
 		require.NoError(t, err)
 		ch <- msg
 	}, StartAtEarliestReceived())
@@ -475,8 +478,8 @@ func TestClientPublishHeaders(t *testing.T) {
 	// Wait to read back published messages.
 	select {
 	case msg := <-ch:
-		require.Len(t, msg.Headers, 2)
-		for name, value := range msg.Headers {
+		require.Len(t, msg.Headers(), 2)
+		for name, value := range msg.Headers() {
 			if name == "a" {
 				require.Equal(t, []byte("header"), value)
 			}
@@ -547,8 +550,8 @@ func TestPublishToPartition(t *testing.T) {
 	_, err = client.Publish(context.Background(), name, []byte("hello"), ToPartition(1))
 	require.NoError(t, err)
 
-	recv := make(chan *proto.Message)
-	err = client.Subscribe(context.Background(), name, func(msg *proto.Message, err error) {
+	recv := make(chan Message)
+	err = client.Subscribe(context.Background(), name, func(msg Message, err error) {
 		require.NoError(t, err)
 		recv <- msg
 	}, Partition(1), StartAtEarliestReceived())
@@ -556,7 +559,7 @@ func TestPublishToPartition(t *testing.T) {
 
 	select {
 	case msg := <-recv:
-		require.Equal(t, []byte("hello"), msg.Value)
+		require.Equal(t, []byte("hello"), msg.Value())
 	case <-time.After(5 * time.Second):
 		require.Fail(t, "Did not receive expected message")
 	}
@@ -593,8 +596,8 @@ func TestPublishPartitionByRoundRobin(t *testing.T) {
 	}
 
 	for i := 0; i < 3; i++ {
-		recv := make(chan *proto.Message)
-		err = client.Subscribe(context.Background(), name, func(msg *proto.Message, err error) {
+		recv := make(chan Message)
+		err = client.Subscribe(context.Background(), name, func(msg Message, err error) {
 			require.NoError(t, err)
 			recv <- msg
 		}, Partition(int32(i)), StartAtEarliestReceived())
@@ -602,7 +605,7 @@ func TestPublishPartitionByRoundRobin(t *testing.T) {
 
 		select {
 		case msg := <-recv:
-			require.Equal(t, []byte(strconv.Itoa(i)), msg.Value)
+			require.Equal(t, []byte(strconv.Itoa(i)), msg.Value())
 		case <-time.After(5 * time.Second):
 			require.Fail(t, "Did not receive expected message")
 		}
@@ -660,8 +663,8 @@ func TestPublishPartitionByKey(t *testing.T) {
 	}
 
 	for i := 0; i < 3; i++ {
-		recv := make(chan *proto.Message)
-		err = client.Subscribe(context.Background(), name, func(msg *proto.Message, err error) {
+		recv := make(chan Message)
+		err = client.Subscribe(context.Background(), name, func(msg Message, err error) {
 			require.NoError(t, err)
 			recv <- msg
 		}, Partition(int32(i)), StartAtEarliestReceived())
@@ -669,9 +672,9 @@ func TestPublishPartitionByKey(t *testing.T) {
 
 		select {
 		case msg := <-recv:
-			_, ok := msgs[string(msg.Value)]
+			_, ok := msgs[string(msg.Value())]
 			require.True(t, ok)
-			delete(msgs, string(msg.Value))
+			delete(msgs, string(msg.Value()))
 		case <-time.After(5 * time.Second):
 			require.Fail(t, "Did not receive expected message")
 		}
@@ -712,8 +715,8 @@ func TestPublishToSubject(t *testing.T) {
 
 	// Ensure both streams received the message.
 	for _, stream := range streams {
-		recv := make(chan *proto.Message)
-		err = client.Subscribe(context.Background(), stream, func(msg *proto.Message, err error) {
+		recv := make(chan Message)
+		err = client.Subscribe(context.Background(), stream, func(msg Message, err error) {
 			require.NoError(t, err)
 			recv <- msg
 		}, StartAtEarliestReceived())
@@ -766,22 +769,22 @@ func ExampleClient_subscribe() {
 	defer client.Close()
 
 	// Subscribe to base stream partition.
-	if err := client.Subscribe(context.Background(), "foo-stream", func(msg *proto.Message, err error) {
+	if err := client.Subscribe(context.Background(), "foo-stream", func(msg Message, err error) {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println(msg.Offset, string(msg.Value))
+		fmt.Println(msg.Offset(), string(msg.Value()))
 	}); err != nil {
 		panic(err)
 	}
 
 	// Subscribe to a specific stream partition.
 	ctx := context.Background()
-	if err := client.Subscribe(ctx, "bar-stream", func(msg *proto.Message, err error) {
+	if err := client.Subscribe(ctx, "bar-stream", func(msg Message, err error) {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println(msg.Offset, string(msg.Value))
+		fmt.Println(msg.Offset(), string(msg.Value()))
 	}, Partition(1)); err != nil {
 		panic(err)
 	}
@@ -854,7 +857,7 @@ func ExampleUnmarshalAck() {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println("ack:", ack.Stream, ack.Offset, ack.MsgSubject)
+		fmt.Println("ack:", ack.Stream(), ack.Offset(), ack.MessageSubject())
 		close(acked)
 	})
 	if err != nil {

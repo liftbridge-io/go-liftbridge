@@ -3,10 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
-	"time"
 
 	lift "github.com/liftbridge-io/go-liftbridge"
-	proto "github.com/liftbridge-io/liftbridge-api/go"
 )
 
 func main() {
@@ -29,11 +27,11 @@ func main() {
 	}
 
 	ctx := context.Background()
-	if err := client.Subscribe(ctx, "bar-stream", func(msg *proto.Message, err error) {
+	if err := client.Subscribe(ctx, "bar-stream", func(msg lift.Message, err error) {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println(time.Unix(0, msg.Timestamp), msg.Offset, string(msg.Key), string(msg.Value))
+		fmt.Println(msg.Timestamp(), msg.Offset(), string(msg.Key()), string(msg.Value()))
 	}, lift.StartAtEarliestReceived(), lift.Partition(2)); err != nil {
 		panic(err)
 	}

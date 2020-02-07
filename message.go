@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"hash/crc32"
 	"sync"
+	"time"
 
 	"github.com/liftbridge-io/liftbridge-api/go"
 )
@@ -15,6 +16,182 @@ var (
 	partitionByRoundRobin = newRoundRobinPartitioner()
 	hasher                = crc32.ChecksumIEEE
 )
+
+// AckPolicy controls the behavior of message acknowledgements.
+type AckPolicy int32
+
+func (a AckPolicy) toProto() proto.AckPolicy {
+	return proto.AckPolicy(a)
+}
+
+// Message being sent to or received from a Liftbridge stream.
+type Message interface {
+	// Offset is a monotonic message sequence in the stream partition.
+	Offset() int64
+
+	// Key is an optional label set on a Message, useful for partitioning and
+	// stream compaction.
+	Key() []byte
+
+	// Value is the Message payload.
+	Value() []byte
+
+	// Timestamp is the time the Message was received by the server.
+	Timestamp() time.Time
+
+	// Subject is the NATS subject the Message was received on.
+	Subject() string
+
+	// ReplySubject is the NATS reply subject on the Message, if any.
+	ReplySubject() string
+
+	// Headers is a set of key-value pairs.
+	Headers() map[string][]byte
+
+	// AckInbox is the NATS subject used to publish acks to.
+	AckInbox() string
+
+	// CorrelationID is a user-supplied value to correlate acks to publishes.
+	CorrelationID() string
+
+	// AckPolicy controls the behavior of acks.
+	AckPolicy() AckPolicy
+}
+
+// protoMessage is a Message backed by protobuf.
+type protoMessage struct {
+	msg *proto.Message
+}
+
+func newProtoMessage(msg *proto.Message) Message {
+	if msg == nil {
+		return nil
+	}
+	return &protoMessage{msg}
+}
+
+// Offset is a monotonic message sequence in the stream partition.
+func (p *protoMessage) Offset() int64 {
+	return p.msg.GetOffset()
+}
+
+// Key is an optional label set on a Message, useful for partitioning and
+// stream compaction.
+func (p *protoMessage) Key() []byte {
+	return p.msg.GetKey()
+}
+
+// Value is the Message payload.
+func (p *protoMessage) Value() []byte {
+	return p.msg.GetValue()
+}
+
+// Timestamp is the time the Message was received by the server.
+func (p *protoMessage) Timestamp() time.Time {
+	return time.Unix(0, p.msg.GetTimestamp())
+}
+
+// Subject is the NATS subject the Message was received on.
+func (p *protoMessage) Subject() string {
+	return p.msg.GetSubject()
+}
+
+// ReplySubject is the NATS reply subject on the Message, if any.
+func (p *protoMessage) ReplySubject() string {
+	return p.msg.GetReplySubject()
+}
+
+// Headers is a set of key-value pairs.
+func (p *protoMessage) Headers() map[string][]byte {
+	return p.msg.GetHeaders()
+}
+
+// AckInbox is the NATS subject used to publish acks to.
+func (p *protoMessage) AckInbox() string {
+	return p.msg.GetAckInbox()
+}
+
+// CorrelationID is a user-supplied value to correlate acks to publishes.
+func (p *protoMessage) CorrelationID() string {
+	return p.msg.GetCorrelationId()
+}
+
+// AckPolicy controls the behavior of acks.
+func (p *protoMessage) AckPolicy() AckPolicy {
+	return AckPolicy(p.msg.GetAckPolicy())
+}
+
+// Ack represents an acknowledgement that a message was committed to a stream
+// partition.
+type Ack interface {
+	// Stream the Message was received on.
+	Stream() string
+
+	// PartitionSubject is the NATS subject the partition is attached to.
+	PartitionSubject() string
+
+	// MessageSubject is the NATS subject the message was received on.
+	MessageSubject() string
+
+	// Offset is the partition offset the message was committed to.
+	Offset() int64
+
+	// AckInbox is the NATS subject the ack was published to.
+	AckInbox() string
+
+	// CorrelationID is the user-supplied value from the message.
+	CorrelationID() string
+
+	// AckPolicy sent on the message.
+	AckPolicy() AckPolicy
+}
+
+// protoAck is an Ack backed by protobuf.
+type protoAck struct {
+	ack *proto.Ack
+}
+
+func newProtoAck(ack *proto.Ack) Ack {
+	if ack == nil {
+		return nil
+	}
+	return &protoAck{ack}
+}
+
+// Stream the Message was received on.
+func (p *protoAck) Stream() string {
+	return p.ack.GetStream()
+}
+
+// PartitionSubject is the NATS subject the partition is attached to.
+func (p *protoAck) PartitionSubject() string {
+	return p.ack.GetPartitionSubject()
+}
+
+// MessageSubject is the NATS subject the message was received on.
+func (p *protoAck) MessageSubject() string {
+	return p.ack.GetMsgSubject()
+}
+
+// Offset is the partition offset the message was committed to.
+func (p *protoAck) Offset() int64 {
+	return p.ack.GetOffset()
+}
+
+// AckInbox is the NATS subject the ack was published to.
+func (p *protoAck) AckInbox() string {
+	return p.ack.GetAckInbox()
+}
+
+// CorrelationID is the user-supplied value from the message.
+func (p *protoAck) CorrelationID() string {
+	return p.ack.GetCorrelationId()
+}
+
+// AckPolicy sent on the message.
+func (p *protoAck) AckPolicy() AckPolicy {
+	return AckPolicy(p.ack.GetAckPolicy())
+}
 
 // Partitioner is used to map a message to a stream partition.
 type Partitioner interface {
@@ -99,7 +276,7 @@ type MessageOptions struct {
 	// AckPolicy controls the behavior of Message acks sent by the server. By
 	// default, Liftbridge will send an ack when the stream leader has written
 	// the Message to its write-ahead log.
-	AckPolicy proto.AckPolicy
+	AckPolicy AckPolicy
 
 	// Headers are key-value pairs to set on the Message.
 	Headers map[string][]byte
@@ -149,7 +326,7 @@ func CorrelationID(correlationID string) MessageOption {
 // written it to its write-ahead log.
 func AckPolicyLeader() MessageOption {
 	return func(o *MessageOptions) {
-		o.AckPolicy = proto.AckPolicy_LEADER
+		o.AckPolicy = AckPolicy(proto.AckPolicy_LEADER)
 	}
 }
 
@@ -158,7 +335,7 @@ func AckPolicyLeader() MessageOption {
 // written to all replicas.
 func AckPolicyAll() MessageOption {
 	return func(o *MessageOptions) {
-		o.AckPolicy = proto.AckPolicy_ALL
+		o.AckPolicy = AckPolicy(proto.AckPolicy_ALL)
 	}
 }
 
@@ -166,7 +343,7 @@ func AckPolicyAll() MessageOption {
 // NONE. This means no ack will be sent.
 func AckPolicyNone() MessageOption {
 	return func(o *MessageOptions) {
-		o.AckPolicy = proto.AckPolicy_NONE
+		o.AckPolicy = AckPolicy(proto.AckPolicy_NONE)
 	}
 }
 
@@ -240,7 +417,7 @@ func NewMessage(value []byte, options ...MessageOption) []byte {
 		Value:         value,
 		AckInbox:      opts.AckInbox,
 		CorrelationId: opts.CorrelationID,
-		AckPolicy:     opts.AckPolicy,
+		AckPolicy:     opts.AckPolicy.toProto(),
 	}).Marshal()
 	if err != nil {
 		panic(err)
@@ -254,17 +431,17 @@ func NewMessage(value []byte, options ...MessageOption) []byte {
 
 // UnmarshalAck deserializes an Ack from the given byte slice. It returns an
 // error if the given data is not actually an Ack.
-func UnmarshalAck(data []byte) (*proto.Ack, error) {
+func UnmarshalAck(data []byte) (Ack, error) {
 	var (
 		ack = &proto.Ack{}
 		err = ack.Unmarshal(data)
 	)
-	return ack, err
+	return newProtoAck(ack), err
 }
 
 // UnmarshalMessage deserializes a message from the given byte slice.  It
 // returns a bool indicating if the given data was actually a Message or not.
-func UnmarshalMessage(data []byte) (*proto.Message, bool) {
+func UnmarshalMessage(data []byte) (Message, bool) {
 	if len(data) <= envelopeCookieLen {
 		return nil, false
 	}
@@ -278,5 +455,5 @@ func UnmarshalMessage(data []byte) (*proto.Message, bool) {
 	if err != nil {
 		return nil, false
 	}
-	return msg, true
+	return newProtoMessage(msg), true
 }
