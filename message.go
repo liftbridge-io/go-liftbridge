@@ -21,8 +21,8 @@ var (
 )
 
 const (
-	protoV0      = 0x00
-	minHeaderLen = 8
+	envelopeProtoV0      = 0x00
+	envelopeMinHeaderLen = 8
 )
 
 // AckPolicy controls the behavior of message acknowledgements.
@@ -435,11 +435,11 @@ func NewMessage(value []byte, options ...MessageOption) []byte {
 	var (
 		buf       = make([]byte, envelopeMagicNumberLen+4+len(msg))
 		pos       = 0
-		headerLen = minHeaderLen
+		headerLen = envelopeMinHeaderLen
 	)
 	copy(buf[pos:], envelopeMagicNumber)
 	pos += envelopeMagicNumberLen
-	buf[pos] = protoV0 // Version
+	buf[pos] = envelopeProtoV0 // Version
 	pos++
 	buf[pos] = byte(headerLen) // HeaderLen
 	pos++
@@ -468,13 +468,13 @@ func UnmarshalAck(data []byte) (Ack, error) {
 // UnmarshalMessage deserializes a message from the given byte slice. It
 // returns a bool indicating if the given data was actually a Message or not.
 func UnmarshalMessage(data []byte) (Message, bool) {
-	if len(data) <= minHeaderLen {
+	if len(data) <= envelopeMinHeaderLen {
 		return nil, false
 	}
 	if !bytes.Equal(data[:envelopeMagicNumberLen], envelopeMagicNumber) {
 		return nil, false
 	}
-	if data[4] != protoV0 {
+	if data[4] != envelopeProtoV0 {
 		return nil, false
 	}
 
@@ -487,10 +487,10 @@ func UnmarshalMessage(data []byte) (Message, bool) {
 	// Check CRC.
 	if hasBit(flags, 0) {
 		// Make sure there is a CRC present.
-		if headerLen != minHeaderLen+4 {
+		if headerLen != envelopeMinHeaderLen+4 {
 			return nil, false
 		}
-		crc := binary.BigEndian.Uint32(data[minHeaderLen:headerLen])
+		crc := binary.BigEndian.Uint32(data[envelopeMinHeaderLen:headerLen])
 		if crc32.Checksum(payload, crc32cTable) != crc {
 			return nil, false
 		}

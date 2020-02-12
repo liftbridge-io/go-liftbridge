@@ -138,6 +138,12 @@ func TestUnmarshalMessageError(t *testing.T) {
 	buf[5] = byte(12)
 	_, ok = UnmarshalMessage(buf)
 	require.False(t, ok)
+
+	// Unknown protocol version.
+	msg = NewMessage([]byte("hello"))
+	msg[4] = 0x01
+	_, ok = UnmarshalMessage(msg)
+	require.False(t, ok)
 }
 
 func TestConnectNoAddrs(t *testing.T) {
