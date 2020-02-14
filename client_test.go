@@ -73,8 +73,7 @@ func TestUnmarshalAck(t *testing.T) {
 		Offset:     1,
 		AckInbox:   "acks",
 	}
-	data, err := ack.Marshal()
-	require.NoError(t, err)
+	data := marshalAck(t, ack)
 	actual, err := UnmarshalAck(data)
 	require.NoError(t, err)
 	require.Equal(t, ack.Stream, actual.Stream())
@@ -100,8 +99,8 @@ func TestNewMessageUnmarshal(t *testing.T) {
 		AckPolicyNone(),
 		CorrelationID("123"),
 	)
-	actual, ok := UnmarshalMessage(msg)
-	require.True(t, ok)
+	actual, err := UnmarshalMessage(msg)
+	require.Nil(t, err)
 	require.Equal(t, key, actual.Key())
 	require.Equal(t, value, actual.Value())
 	require.Equal(t, ackInbox, actual.AckInbox())
@@ -110,23 +109,23 @@ func TestNewMessageUnmarshal(t *testing.T) {
 }
 
 func TestUnmarshalMessageError(t *testing.T) {
-	_, ok := UnmarshalMessage(nil)
-	require.False(t, ok)
+	_, err := UnmarshalMessage(nil)
+	require.Error(t, err)
 
-	_, ok = UnmarshalMessage([]byte("blahh"))
-	require.False(t, ok)
+	_, err = UnmarshalMessage([]byte("blahh"))
+	require.Error(t, err)
 
 	buf := make([]byte, 8)
 	copy(buf, envelopeMagicNumber)
 	copy(buf[envelopeMagicNumberLen:], []byte("blah"))
-	_, ok = UnmarshalMessage(buf)
-	require.False(t, ok)
+	_, err = UnmarshalMessage(buf)
+	require.Error(t, err)
 
 	// CRC flag set with no CRC present.
 	msg := NewMessage([]byte("hello"))
 	msg[6] = setBit(msg[6], 0)
-	_, ok = UnmarshalMessage(msg)
-	require.False(t, ok)
+	_, err = UnmarshalMessage(msg)
+	require.Error(t, err)
 
 	// CRC flag set with invalid CRC.
 	msg = NewMessage([]byte("hello"))
@@ -136,14 +135,14 @@ func TestUnmarshalMessageError(t *testing.T) {
 	buf[8] = byte(32)
 	copy(buf[12:], msg[8:])
 	buf[5] = byte(12)
-	_, ok = UnmarshalMessage(buf)
-	require.False(t, ok)
+	_, err = UnmarshalMessage(buf)
+	require.Error(t, err)
 
 	// Unknown protocol version.
 	msg = NewMessage([]byte("hello"))
 	msg[4] = 0x01
-	_, ok = UnmarshalMessage(msg)
-	require.False(t, ok)
+	_, err = UnmarshalMessage(msg)
+	require.Error(t, err)
 }
 
 func TestConnectNoAddrs(t *testing.T) {
@@ -897,4 +896,10 @@ func ExampleUnmarshalAck() {
 	}
 
 	<-acked
+}
+
+func marshalAck(t *testing.T, ack *proto.Ack) []byte {
+	data, err := marshalEnvelope(ack)
+	require.NoError(t, err)
+	return data
 }

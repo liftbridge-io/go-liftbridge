@@ -3,11 +3,13 @@ package liftbridge
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"sync"
 	"time"
 
+	pb "github.com/golang/protobuf/proto"
 	"github.com/liftbridge-io/liftbridge-api/go"
 )
 
@@ -421,15 +423,85 @@ func NewMessage(value []byte, options ...MessageOption) []byte {
 		opt(opts)
 	}
 
-	msg, err := (&proto.Message{
+	msg, err := marshalEnvelope(&proto.Message{
 		Key:           opts.Key,
 		Value:         value,
 		AckInbox:      opts.AckInbox,
 		CorrelationId: opts.CorrelationID,
 		AckPolicy:     opts.AckPolicy.toProto(),
-	}).Marshal()
+	})
 	if err != nil {
 		panic(err)
+	}
+	return msg
+}
+
+// UnmarshalAck deserializes an Ack from the given byte slice. It returns an
+// error if the given data is not actually an Ack.
+func UnmarshalAck(data []byte) (Ack, error) {
+	payload, err := unmarshalEnvelope(data)
+	if err != nil {
+		return nil, err
+	}
+
+	ack := &proto.Ack{}
+	if err := ack.Unmarshal(payload); err != nil {
+		return nil, err
+	}
+	return newProtoAck(ack), nil
+}
+
+// UnmarshalMessage deserializes a message from the given byte slice. It
+// returns an error if the given data is not actually a Message.
+func UnmarshalMessage(data []byte) (Message, error) {
+	payload, err := unmarshalEnvelope(data)
+	if err != nil {
+		return nil, err
+	}
+
+	msg := &proto.Message{}
+	if err := msg.Unmarshal(payload); err != nil {
+		return nil, err
+	}
+	return newProtoMessage(msg), nil
+}
+
+func unmarshalEnvelope(data []byte) ([]byte, error) {
+	if len(data) <= envelopeMinHeaderLen {
+		return nil, errors.New("data missing envelope header")
+	}
+	if !bytes.Equal(data[:envelopeMagicNumberLen], envelopeMagicNumber) {
+		return nil, errors.New("unexpected envelope magic number")
+	}
+	if data[4] != envelopeProtoV0 {
+		return nil, fmt.Errorf("unknown envelope protocol: %v", data[4])
+	}
+
+	var (
+		headerLen = int(data[5])
+		flags     = data[6]
+		payload   = data[headerLen:]
+	)
+
+	// Check CRC.
+	if hasBit(flags, 0) {
+		// Make sure there is a CRC present.
+		if headerLen != envelopeMinHeaderLen+4 {
+			return nil, errors.New("incorrect envelope header size")
+		}
+		crc := binary.BigEndian.Uint32(data[envelopeMinHeaderLen:headerLen])
+		if c := crc32.Checksum(payload, crc32cTable); c != crc {
+			return nil, fmt.Errorf("crc mismatch: expected %d, got %d", crc, c)
+		}
+	}
+
+	return payload, nil
+}
+
+func marshalEnvelope(data pb.Message) ([]byte, error) {
+	msg, err := pb.Marshal(data)
+	if err != nil {
+		return nil, err
 	}
 
 	var (
@@ -452,58 +524,7 @@ func NewMessage(value []byte, options ...MessageOption) []byte {
 			pos, headerLen))
 	}
 	copy(buf[pos:], msg)
-	return buf
-}
-
-// UnmarshalAck deserializes an Ack from the given byte slice. It returns an
-// error if the given data is not actually an Ack.
-func UnmarshalAck(data []byte) (Ack, error) {
-	var (
-		ack = &proto.Ack{}
-		err = ack.Unmarshal(data)
-	)
-	return newProtoAck(ack), err
-}
-
-// UnmarshalMessage deserializes a message from the given byte slice. It
-// returns a bool indicating if the given data was actually a Message or not.
-func UnmarshalMessage(data []byte) (Message, bool) {
-	if len(data) <= envelopeMinHeaderLen {
-		return nil, false
-	}
-	if !bytes.Equal(data[:envelopeMagicNumberLen], envelopeMagicNumber) {
-		return nil, false
-	}
-	if data[4] != envelopeProtoV0 {
-		return nil, false
-	}
-
-	var (
-		headerLen = int(data[5])
-		flags     = data[6]
-		payload   = data[headerLen:]
-	)
-
-	// Check CRC.
-	if hasBit(flags, 0) {
-		// Make sure there is a CRC present.
-		if headerLen != envelopeMinHeaderLen+4 {
-			return nil, false
-		}
-		crc := binary.BigEndian.Uint32(data[envelopeMinHeaderLen:headerLen])
-		if crc32.Checksum(payload, crc32cTable) != crc {
-			return nil, false
-		}
-	}
-
-	var (
-		msg = &proto.Message{}
-		err = msg.Unmarshal(payload)
-	)
-	if err != nil {
-		return nil, false
-	}
-	return newProtoMessage(msg), true
+	return buf, nil
 }
 
 func setBit(n byte, pos uint8) byte {
