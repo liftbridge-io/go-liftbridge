@@ -225,7 +225,7 @@ when the stream leader has stored the message, when all replicas have stored
 it, or no ack at all.
 
 This additional metadata is sent using a message envelope which is a
-[protobuf](https://github.com/liftbridge-io/liftbridge-grpc). The publish APIs
+[protobuf](https://github.com/liftbridge-io/liftbridge-api). The publish APIs
 handle this for you, but this client library also provides helper APIs to make
 it easy to create envelopes and deal with acks yourself using a NATS client
 directly.
