@@ -29,7 +29,6 @@ import (
 	"fmt"
 
 	lift "github.com/liftbridge-io/go-liftbridge"
-	"github.com/liftbridge-io/liftbridge-grpc/go"
 	"golang.org/x/net/context"
 )
 
@@ -54,17 +53,17 @@ func main() {
 	}
 	
 	// Publish a message to "foo".
-	if _, err := client.Publish(context.Background(), "foo", []byte("hello")); err != nil {
+	if _, err := client.Publish(context.Background(), name, []byte("hello")); err != nil {
 		panic(err)
 	}
 
 	// Subscribe to the stream starting from the beginning.
 	ctx := context.Background()
-	if err := client.Subscribe(ctx, name, func(msg *proto.Message, err error) {
+	if err := client.Subscribe(ctx, name, func(msg lift.Message, err error) {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println(msg.Offset, string(msg.Value))
+		fmt.Println(msg.Offset(), string(msg.Value()))
 	}, lift.StartAtEarliestReceived()); err != nil {
 		panic(err)
 	}
@@ -89,7 +88,7 @@ in the same group, messages will be balanced among them.
 ```go
 // Create a stream attached to the NATS subject "foo.*" that is replicated to
 // all the brokers in the cluster. ErrStreamExists is returned if a stream with
-// the given name already exists for the subject.
+// the given name already exists.
 client.CreateStream(context.Background(), "foo.*", "my-stream", lift.MaxReplication())
 ```
 
@@ -102,79 +101,102 @@ Subscribe.
 
 ```go
 // Subscribe starting with new messages only.
-client.Subscribe(ctx, name, func(msg *proto.Message, err error) {
-	fmt.Println(msg.Offset, string(msg.Value))
+client.Subscribe(ctx, name, func(msg lift.Message, err error) {
+	fmt.Println(msg.Offset(), string(msg.Value()))
 })
 
 // Subscribe starting with the most recently published value.
-client.Subscribe(ctx, name, func(msg *proto.Message, err error) {
-	fmt.Println(msg.Offset, string(msg.Value))
+client.Subscribe(ctx, name, func(msg lift.Message, err error) {
+	fmt.Println(msg.Offset(), string(msg.Value()))
 }, lift.StartAtLatestReceived())
 
 // Subscribe starting with the oldest published value.
-client.Subscribe(ctx, name, func(msg *proto.Message, err error) {
-	fmt.Println(msg.Offset, string(msg.Value))
+client.Subscribe(ctx, name, func(msg lift.Message, err error) {
+	fmt.Println(msg.Offset(), string(msg.Value()))
 }, lift.StartAtEarliestReceived())
 
 // Subscribe starting at a specific offset.
-client.Subscribe(ctx, name, func(msg *proto.Message, err error) {
-	fmt.Println(msg.Offset, string(msg.Value))
+client.Subscribe(ctx, name, func(msg lift.Message, err error) {
+	fmt.Println(msg.Offset(), string(msg.Value()))
 }, lift.StartAtOffset(42))
 
 // Subscribe starting at a specific time.
-client.Subscribe(ctx, name, func(msg *proto.Message, err error) {
-	fmt.Println(msg.Offset, string(msg.Value))
+client.Subscribe(ctx, name, func(msg lift.Message, err error) {
+	fmt.Println(msg.Offset(), string(msg.Value()))
 }, lift.StartAtTime(time.Now()))
 
 // Subscribe starting at a specific amount of time in the past.
-client.Subscribe(ctx, name, func(msg *proto.Message, err error) {
-	fmt.Println(msg.Offset, string(msg.Value))
+client.Subscribe(ctx, name, func(msg lift.Message, err error) {
+	fmt.Println(msg.Offset(), string(msg.Value()))
 }, lift.StartAtTimeDelta(time.Minute))
 ```
 
 ### Publishing
 
-A publish API is provided to make it easy to write messages to streams. This includes
-a number of options for decorating messages with metadata like a message key and
-headers as well as configuring acking behavior from the server.
+There are two publish APIs provided to make it easy to write messages to
+streams, `Publish` and `PublishToSubject`. These include a number of options
+for decorating messages with metadata like a message key and headers as well as
+configuring acking behavior from the server.
 
-Keys are used by Liftbridge's log compaction. When enabled, Liftbridge streams will
-retain only the last message for a given key.
+`Publish` sends a message to a Liftbridge stream. The stream partition that
+gets published to is determined by the provided partition or `Partitioner`
+strategy passed through `MessageOptions`, if any. If a partition or
+`Partitioner` is not provided, it will publish to the base partition (partition
+0). This partition determines the underlying NATS subject that gets published
+to. To publish directly to a specific NATS subject, use the low-level
+`PublishToSubject` API described below.
+
+Keys are used by Liftbridge's log compaction. When enabled, Liftbridge streams
+will retain only the last message for a given key.
 
 ```go
 // Publish a message with a key and header set.
-client.Publish(context.Background(), "foo", []byte("hello"),
+client.Publish(context.Background(), "foo-stream", []byte("hello"),
 	lift.Key([]byte("key"),
 	lift.Header("foo", []byte("bar")),
 )
 ```
 
-An `AckPolicy` tells the server when to send an ack. If a deadline is provided to
-`Publish`, it will block up to this amount of time waiting for the ack.
+An `AckPolicy` tells the server when to send an ack. If a deadline is provided
+to `Publish`, it will block up to this amount of time waiting for the ack.
 
 ```go
 ctx, _ := context.WithTimeout(context.Background(), 2*time.Second)
-client.Publish(ctx, "foo", []byte("hello"),
+client.Publish(ctx, "foo-stream", []byte("hello"),
 	lift.AckPolicyAll(), // Wait for all stream replicas to get the message
 )
 
 ctx, _ = context.WithTimeout(context.Background(), 2*time.Second)
-client.Publish(ctx, "foo", []byte("hello"),
+client.Publish(ctx, "foo-stream", []byte("hello"),
 	lift.AckPolicyLeader(), // Wait for just the stream leader to get the message
 )
 
-client.Publish(context.Background(), "foo", []byte("hello"),
+client.Publish(context.Background(), "foo-stream", []byte("hello"),
 	lift.AckPolicyNone(), // Don't send an ack
 )
 ```
 
+`PublishToSubject` sends a message directly to the provided NATS subject. Note
+that because this publishes directly to a subject, there may be multiple (or
+no) streams that receive the message. As a result, `MessageOptions` related to
+partitioning will be ignored. To publish at the stream/partition level, use the
+high-level `Publish` API described above.
+
+```go
+// Publish a message directly to a NATS subject.
+client.PublishToSubject(context.Background(), "foo.bar", []byte("hello"))
+```
+
+Alternatively, messages can be [published directly to
+NATS](#publishing-directly-with-nats) using a NATS client and Liftbridge
+helpers detailed below.
+
 #### Publishing Directly with NATS
 
-Since Liftbridge is an extension of
-[NATS](https://github.com/nats-io/gnatsd), a [NATS
-client](https://github.com/nats-io/nats.go) can also be used to publish messages. This
-means existing NATS publishers do not need any changes for messages to be
-consumed in Liftbridge.
+Since Liftbridge is an extension of [NATS](https://github.com/nats-io/gnatsd),
+a [NATS client](https://github.com/nats-io/nats.go) can also be used to publish
+messages. This means existing NATS publishers do not need any changes for
+messages to be consumed in Liftbridge.
 
 ```go
 package main
@@ -191,7 +213,7 @@ func main() {
 }
 ```
 
-As shown with the `Publish` API above, Liftbridge allows publishers to add
+As shown with the publish APIs above, Liftbridge allows publishers to add
 metadata to messages, including a key, ack inbox, correlation ID, and ack
 policy. The message key can be used for stream compaction in Liftbridge.
 Acks are used to guarantee Liftbridge has recorded a message to ensure
@@ -203,8 +225,8 @@ when the stream leader has stored the message, when all replicas have stored
 it, or no ack at all.
 
 This additional metadata is sent using a message envelope which is a
-[protobuf](https://github.com/liftbridge-io/liftbridge-grpc). The `Publish`
-API handles this for you, but this client library also provides APIs to make
+[protobuf](https://github.com/liftbridge-io/liftbridge-api). The publish APIs
+handle this for you, but this client library also provides helper APIs to make
 it easy to create envelopes and deal with acks yourself using a NATS client
 directly.
 
@@ -231,7 +253,7 @@ nc.Publish("foo.bar", msg)
 // Wait for ack from Liftbridge.
 resp, _ := sub.NextMsg(5*time.Second)
 ack, _ := lift.UnmarshalAck(resp.Data)
-if ack.CorrelationId == cid {
+if ack.CorrelationID() == cid {
 	fmt.Println("message acked!")
 }
 ```
@@ -261,25 +283,30 @@ configured by providing a `Partitioner`.
 
 ```go
 // Publish to partition based on message key hash.
-client.Publish(context.Background(), "bar", []byte("hello"),
+client.Publish(context.Background(), "bar-stream", []byte("hello"),
 	lift.Key([]byte("key")),
 	lift.PartitionByKey(),
 )
 
 // Publish to partitions in a round-robin fashion.
-client.Publish(context.Background(), "bar", []byte("hello"),
+client.Publish(context.Background(), "bar-stream", []byte("hello"),
 	lift.Key([]byte("key")),
 	lift.PartitionByRoundRobin(),
 )
 
 // Publish to a specific partition.
-client.Publish(context.Background(), "bar", []byte("hello"),
+client.Publish(context.Background(), "bar-stream", []byte("hello"),
 	lift.Key([]byte("key")),
 	lift.ToPartition(1),
 )
+
+// Publish directly to a partition NATS subject.
+client.PublishToSubject(context.Background(), "bar.1", []byte("hello"),
+	lift.Key([]byte("key")))
 ```
 
-A custom `Partitioner` implementation can also be provided.
+A custom `Partitioner` implementation can also be provided to `Publish`.
+`PublishToSubject` will ignore any partition-related `MessageOption`.
 
 #### Subscribing to Stream Partitions
 

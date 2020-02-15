@@ -30,6 +30,13 @@ import (
 // stream.
 const MaxReplicationFactor int32 = -1
 
+// StartPosition controls where to begin consuming in a stream.
+type StartPosition int32
+
+func (s StartPosition) toProto() proto.StartPosition {
+	return proto.StartPosition(s)
+}
+
 const (
 	defaultMaxConnsPerBroker   = 2
 	defaultKeepAliveTime       = 30 * time.Second
@@ -49,7 +56,7 @@ var (
 // Handler is the callback invoked by Subscribe when a message is received on
 // the specified stream. If err is not nil, the subscription will be terminated
 // and no more messages will be received.
-type Handler func(msg *proto.Message, err error)
+type Handler func(msg Message, err error)
 
 // StreamOptions are used to configure new streams.
 type StreamOptions struct {
@@ -142,13 +149,33 @@ type Client interface {
 	// a cancelable Context to close a subscription.
 	Subscribe(ctx context.Context, stream string, handler Handler, opts ...SubscriptionOption) error
 
-	// Publish publishes a new message to the NATS subject. If the AckPolicy is
-	// not NONE and a deadline is provided, this will synchronously block until
-	// the first ack is received. If the ack is not received in time, a
-	// DeadlineExceeded status code is returned. If an AckPolicy and deadline
-	// are configured, this returns the first Ack on success, otherwise it
-	// returns nil.
-	Publish(ctx context.Context, subject string, value []byte, opts ...MessageOption) (*proto.Ack, error)
+	// Publish publishes a new message to the Liftbridge stream. The partition
+	// that gets published to is determined by the provided partition or
+	// Partitioner passed through MessageOptions, if any. If a partition or
+	// Partitioner is not provided, this defaults to the base partition. This
+	// partition determines the underlying NATS subject that gets published to.
+	// To publish directly to a specific NATS subject, use the low-level
+	// PublishToSubject API.
+	//
+	// If the AckPolicy is not NONE and a deadline is provided, this will
+	// synchronously block until the ack is received. If the ack is not
+	// received in time, a DeadlineExceeded status code is returned. If an
+	// AckPolicy and deadline are configured, this returns the Ack on success,
+	// otherwise it returns nil.
+	Publish(ctx context.Context, stream string, value []byte, opts ...MessageOption) (Ack, error)
+
+	// PublishToSubject publishes a new message to the NATS subject. Note that
+	// because this publishes directly to a subject, there may be multiple (or
+	// no) streams that receive the message. As a result, MessageOptions
+	// related to partitioning will be ignored. To publish at the
+	// stream/partition level, use the high-level Publish API.
+	//
+	// If the AckPolicy is not NONE and a deadline is provided, this will
+	// synchronously block until the first ack is received. If an ack is not
+	// received in time, a DeadlineExceeded status code is returned. If an
+	// AckPolicy and deadline are configured, this returns the first Ack on
+	// success, otherwise it returns nil.
+	PublishToSubject(ctx context.Context, subject string, value []byte, opts ...MessageOption) (Ack, error)
 
 	// FetchMetadata returns cluster metadata including broker and stream
 	// information.
@@ -386,7 +413,7 @@ func (c *client) CreateStream(ctx context.Context, subject, name string, options
 // SubscriptionOptions are used to control a subscription's behavior.
 type SubscriptionOptions struct {
 	// StartPosition controls where to begin consuming from in the stream.
-	StartPosition proto.StartPosition
+	StartPosition StartPosition
 
 	// StartOffset sets the stream offset to begin consuming from.
 	StartOffset int64
@@ -406,7 +433,7 @@ type SubscriptionOption func(*SubscriptionOptions) error
 // stream.
 func StartAtOffset(offset int64) SubscriptionOption {
 	return func(o *SubscriptionOptions) error {
-		o.StartPosition = proto.StartPosition_OFFSET
+		o.StartPosition = StartPosition(proto.StartPosition_OFFSET)
 		o.StartOffset = offset
 		return nil
 	}
@@ -416,7 +443,7 @@ func StartAtOffset(offset int64) SubscriptionOption {
 // stream.
 func StartAtTime(start time.Time) SubscriptionOption {
 	return func(o *SubscriptionOptions) error {
-		o.StartPosition = proto.StartPosition_TIMESTAMP
+		o.StartPosition = StartPosition(proto.StartPosition_TIMESTAMP)
 		o.StartTimestamp = start
 		return nil
 	}
@@ -426,7 +453,7 @@ func StartAtTime(start time.Time) SubscriptionOption {
 // stream using a time delta in the past.
 func StartAtTimeDelta(ago time.Duration) SubscriptionOption {
 	return func(o *SubscriptionOptions) error {
-		o.StartPosition = proto.StartPosition_TIMESTAMP
+		o.StartPosition = StartPosition(proto.StartPosition_TIMESTAMP)
 		o.StartTimestamp = time.Now().Add(-ago)
 		return nil
 	}
@@ -436,7 +463,7 @@ func StartAtTimeDelta(ago time.Duration) SubscriptionOption {
 // message received in the stream.
 func StartAtLatestReceived() SubscriptionOption {
 	return func(o *SubscriptionOptions) error {
-		o.StartPosition = proto.StartPosition_LATEST
+		o.StartPosition = StartPosition(proto.StartPosition_LATEST)
 		return nil
 	}
 }
@@ -445,7 +472,7 @@ func StartAtLatestReceived() SubscriptionOption {
 // message received in the stream.
 func StartAtEarliestReceived() SubscriptionOption {
 	return func(o *SubscriptionOptions) error {
-		o.StartPosition = proto.StartPosition_EARLIEST
+		o.StartPosition = StartPosition(proto.StartPosition_EARLIEST)
 		return nil
 	}
 }
@@ -487,51 +514,74 @@ func (c *client) Subscribe(ctx context.Context, streamName string, handler Handl
 	return nil
 }
 
-// Publish publishes a new message to the NATS subject. If the AckPolicy is not
-// NONE and a deadline is provided, this will synchronously block until the
-// first ack is received. If the ack is not received in time, a
-// DeadlineExceeded status code is returned. If an AckPolicy and deadline are
-// configured, this returns the first Ack on success, otherwise it returns nil.
-func (c *client) Publish(ctx context.Context, subject string, value []byte,
-	options ...MessageOption) (*proto.Ack, error) {
+// Publish publishes a new message to the Liftbridge stream. The partition that
+// gets published to is determined by the provided partition or Partitioner
+// passed through MessageOptions, if any. If a partition or Partitioner is not
+// provided, this defaults to the base partition. This partition determines the
+// underlying NATS subject that gets published to.  To publish directly to a
+// spedcific NATS subject, use the low-level PublishToSubject API.
+//
+// If the AckPolicy is not NONE and a deadline is provided, this will
+// synchronously block until the ack is received. If the ack is not received in
+// time, a DeadlineExceeded status code is returned. If an AckPolicy and
+// deadline are configured, this returns the Ack on success, otherwise it
+// returns nil.
+func (c *client) Publish(ctx context.Context, stream string, value []byte,
+	options ...MessageOption) (Ack, error) {
 
 	opts := &MessageOptions{Headers: make(map[string][]byte)}
 	for _, opt := range options {
 		opt(opts)
 	}
 
-	msg := &proto.Message{
+	// Determine which partition to publish to.
+	partition, err := c.partition(ctx, stream, opts.Key, value, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	req := &proto.PublishRequest{
+		Stream:        stream,
+		Partition:     partition,
+		Key:           opts.Key,
+		Value:         value,
+		AckInbox:      opts.AckInbox,
+		CorrelationId: opts.CorrelationID,
+		AckPolicy:     opts.AckPolicy.toProto(),
+	}
+
+	return c.publish(ctx, req)
+}
+
+// PublishToSubject publishes a new message to the NATS subject. Note that
+// because this publishes directly to a subject, there may be multiple (or no)
+// streams that receive the message. As a result, MessageOptions related to
+// partitioning will be ignored. To publish at the stream/partition level, use
+// the high-level Publish API.
+//
+// If the AckPolicy is not NONE and a deadline is provided, this will
+// synchronously block until the first ack is received. If an ack is not
+// received in time, a DeadlineExceeded status code is returned. If an
+// AckPolicy and deadline are configured, this returns the first Ack on
+// success, otherwise it returns nil.
+func (c *client) PublishToSubject(ctx context.Context, subject string, value []byte,
+	options ...MessageOption) (Ack, error) {
+
+	opts := &MessageOptions{Headers: make(map[string][]byte)}
+	for _, opt := range options {
+		opt(opts)
+	}
+
+	req := &proto.PublishRequest{
 		Subject:       subject,
 		Key:           opts.Key,
 		Value:         value,
 		AckInbox:      opts.AckInbox,
 		CorrelationId: opts.CorrelationID,
-		AckPolicy:     opts.AckPolicy,
+		AckPolicy:     opts.AckPolicy.toProto(),
 	}
 
-	// Determine which partition to publish to.
-	partition, err := c.partition(ctx, msg, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	// Publish to the appropriate partition subject.
-	if partition > 0 {
-		msg.Subject = fmt.Sprintf("%s.%d", msg.Subject, partition)
-	}
-
-	var (
-		req = &proto.PublishRequest{Message: msg}
-		ack *proto.Ack
-	)
-	err = c.doResilientRPC(func(client proto.APIClient) error {
-		resp, err := client.Publish(ctx, req)
-		if err == nil {
-			ack = resp.Ack
-		}
-		return err
-	})
-	return ack, err
+	return c.publish(ctx, req)
 }
 
 // FetchMetadata returns cluster metadata including broker and stream
@@ -540,36 +590,50 @@ func (c *client) FetchMetadata(ctx context.Context) (*Metadata, error) {
 	return c.metadata.update(ctx)
 }
 
+func (c *client) publish(ctx context.Context, req *proto.PublishRequest) (Ack, error) {
+	var ack *proto.Ack
+	err := c.doResilientRPC(func(client proto.APIClient) error {
+		resp, err := client.Publish(ctx, req)
+		if err == nil {
+			ack = resp.Ack
+		}
+		return err
+	})
+	return newProtoAck(ack), err
+}
+
 // partition determines the partition ID to publish the message to. If a
 // partition was explicitly provided, it will be returned. If a Partitioner was
 // provided, it will be used to compute the partition. Otherwise, 0 will be
 // returned.
-func (c *client) partition(ctx context.Context, msg *proto.Message, opts *MessageOptions) (int32, error) {
+func (c *client) partition(ctx context.Context, stream string, key, value []byte,
+	opts *MessageOptions) (int32, error) {
+
 	var partition int32
 	// If a partition is explicitly provided, use it.
 	if opts.Partition != nil {
 		partition = *opts.Partition
 	} else if opts.Partitioner != nil {
 		// Make sure we have metadata for the stream and, if not, update it.
-		metadata, err := c.waitForSubjectMetadata(ctx, msg.Subject)
+		metadata, err := c.waitForStreamMetadata(ctx, stream)
 		if err != nil {
 			return 0, err
 		}
-		partition = opts.Partitioner.Partition(msg, metadata)
+		partition = opts.Partitioner.Partition(stream, key, value, metadata)
 	}
 	return partition, nil
 }
 
-func (c *client) waitForSubjectMetadata(ctx context.Context, subject string) (*Metadata, error) {
+func (c *client) waitForStreamMetadata(ctx context.Context, stream string) (*Metadata, error) {
 	for i := 0; i < 5; i++ {
 		metadata := c.metadata.get()
-		if metadata.hasSubjectMetadata(subject) {
+		if metadata.hasStreamMetadata(stream) {
 			return metadata, nil
 		}
 		time.Sleep(50 * time.Millisecond)
 		c.metadata.update(ctx)
 	}
-	return nil, fmt.Errorf("no metadata for stream with subject %s", subject)
+	return nil, fmt.Errorf("no metadata for stream %s", stream)
 }
 
 func (c *client) subscribe(ctx context.Context, stream string,
@@ -598,7 +662,7 @@ func (c *client) subscribe(ctx context.Context, stream string,
 			client = proto.NewAPIClient(conn)
 			req    = &proto.SubscribeRequest{
 				Stream:         stream,
-				StartPosition:  opts.StartPosition,
+				StartPosition:  opts.StartPosition.toProto(),
 				StartOffset:    opts.StartOffset,
 				StartTimestamp: opts.StartTimestamp.UnixNano(),
 				Partition:      opts.Partition,
@@ -670,7 +734,7 @@ func (c *client) dispatchStream(ctx context.Context, streamName string,
 				}
 				break
 			}
-			handler(msg, err)
+			handler(newProtoMessage(msg), err)
 		}
 		if err != nil {
 			break

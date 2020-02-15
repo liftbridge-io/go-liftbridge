@@ -177,25 +177,19 @@ func (m *Metadata) GetStreams(subject string) []*StreamInfo {
 	return m.streams.bySubject[subject]
 }
 
-// PartitionCountsForSubject returns a map containing stream names and the
-// number of partitions for the stream. This does not match on wildcard
-// subjects, e.g. "foo.*".
-func (m *Metadata) PartitionCountsForSubject(subject string) map[string]int32 {
-	var (
-		streams = m.GetStreams(subject)
-		counts  = make(map[string]int32, len(streams))
-	)
-	for _, stream := range streams {
-		counts[stream.name] = int32(len(stream.Partitions()))
+// PartitionCountForStream returns the number of partitions for the given
+// stream.
+func (m *Metadata) PartitionCountForStream(stream string) int32 {
+	info := m.GetStream(stream)
+	if info == nil {
+		return 0
 	}
-	return counts
+	return int32(len(info.partitions))
 }
 
-// hasSubjectMetadata indicates if the Metadata has info for at least one
-// stream with the given subject literal.
-func (m *Metadata) hasSubjectMetadata(subject string) bool {
-	streams := m.GetStreams(subject)
-	return len(streams) > 0
+// hasStreamMetadata indicates if the Metadata has info for the given stream.
+func (m *Metadata) hasStreamMetadata(stream string) bool {
+	return m.GetStream(stream) != nil
 }
 
 type metadataCache struct {
