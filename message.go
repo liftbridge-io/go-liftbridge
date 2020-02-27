@@ -27,6 +27,13 @@ const (
 	envelopeMinHeaderLen = 8
 )
 
+type msgType byte
+
+const (
+	msgTypePublish msgType = iota
+	msgTypeAck
+)
+
 // AckPolicy controls the behavior of message acknowledgements.
 type AckPolicy int32
 
@@ -429,7 +436,7 @@ func NewMessage(value []byte, options ...MessageOption) []byte {
 		AckInbox:      opts.AckInbox,
 		CorrelationId: opts.CorrelationID,
 		AckPolicy:     opts.AckPolicy.toProto(),
-	})
+	}, msgTypePublish)
 	if err != nil {
 		panic(err)
 	}
@@ -439,13 +446,8 @@ func NewMessage(value []byte, options ...MessageOption) []byte {
 // UnmarshalAck deserializes an Ack from the given byte slice. It returns an
 // error if the given data is not actually an Ack.
 func UnmarshalAck(data []byte) (Ack, error) {
-	payload, err := unmarshalEnvelope(data)
-	if err != nil {
-		return nil, err
-	}
-
-	ack := &proto.Ack{}
-	if err := ack.Unmarshal(payload); err != nil {
+	ack := new(proto.Ack)
+	if err := unmarshalEnvelope(data, ack, msgTypeAck); err != nil {
 		return nil, err
 	}
 	return newProtoAck(ack), nil
@@ -454,51 +456,51 @@ func UnmarshalAck(data []byte) (Ack, error) {
 // UnmarshalMessage deserializes a message from the given byte slice. It
 // returns an error if the given data is not actually a Message.
 func UnmarshalMessage(data []byte) (Message, error) {
-	payload, err := unmarshalEnvelope(data)
-	if err != nil {
-		return nil, err
-	}
-
-	msg := &proto.Message{}
-	if err := msg.Unmarshal(payload); err != nil {
+	msg := new(proto.Message)
+	if err := unmarshalEnvelope(data, msg, msgTypePublish); err != nil {
 		return nil, err
 	}
 	return newProtoMessage(msg), nil
 }
 
-func unmarshalEnvelope(data []byte) ([]byte, error) {
+func unmarshalEnvelope(data []byte, msg pb.Message, expectedType msgType) error {
 	if len(data) <= envelopeMinHeaderLen {
-		return nil, errors.New("data missing envelope header")
+		return errors.New("data missing envelope header")
 	}
 	if !bytes.Equal(data[:envelopeMagicNumberLen], envelopeMagicNumber) {
-		return nil, errors.New("unexpected envelope magic number")
+		return errors.New("unexpected envelope magic number")
 	}
 	if data[4] != envelopeProtoV0 {
-		return nil, fmt.Errorf("unknown envelope protocol: %v", data[4])
+		return fmt.Errorf("unknown envelope protocol: %v", data[4])
 	}
 
 	var (
-		headerLen = int(data[5])
-		flags     = data[6]
-		payload   = data[headerLen:]
+		headerLen  = int(data[5])
+		flags      = data[6]
+		actualType = msgType(data[7])
+		payload    = data[headerLen:]
 	)
+
+	if actualType != expectedType {
+		return fmt.Errorf("MsgType mismatch: expected %v, got %v", expectedType, actualType)
+	}
 
 	// Check CRC.
 	if hasBit(flags, 0) {
 		// Make sure there is a CRC present.
 		if headerLen != envelopeMinHeaderLen+4 {
-			return nil, errors.New("incorrect envelope header size")
+			return errors.New("incorrect envelope header size")
 		}
 		crc := binary.BigEndian.Uint32(data[envelopeMinHeaderLen:headerLen])
 		if c := crc32.Checksum(payload, crc32cTable); c != crc {
-			return nil, fmt.Errorf("crc mismatch: expected %d, got %d", crc, c)
+			return fmt.Errorf("crc mismatch: expected %d, got %d", crc, c)
 		}
 	}
 
-	return payload, nil
+	return pb.Unmarshal(payload, msg)
 }
 
-func marshalEnvelope(data pb.Message) ([]byte, error) {
+func marshalEnvelope(data pb.Message, msgType msgType) ([]byte, error) {
 	msg, err := pb.Marshal(data)
 	if err != nil {
 		return nil, err
@@ -517,7 +519,7 @@ func marshalEnvelope(data pb.Message) ([]byte, error) {
 	pos++
 	buf[pos] = 0x00 // Flags
 	pos++
-	buf[pos] = 0x00 // Reserved
+	buf[pos] = byte(msgType) // MsgType
 	pos++
 	if pos != headerLen {
 		panic(fmt.Sprintf("Payload position (%d) does not match expected HeaderLen (%d)",
