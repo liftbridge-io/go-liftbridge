@@ -143,6 +143,11 @@ func TestUnmarshalMessageError(t *testing.T) {
 	msg[4] = 0x01
 	_, err = UnmarshalMessage(msg)
 	require.Error(t, err)
+
+	// Mismatched MsgType.
+	msg = marshalAck(t, new(proto.Ack))
+	_, err = UnmarshalMessage(msg)
+	require.Error(t, err)
 }
 
 func TestConnectNoAddrs(t *testing.T) {
@@ -899,7 +904,7 @@ func ExampleUnmarshalAck() {
 }
 
 func marshalAck(t *testing.T, ack *proto.Ack) []byte {
-	data, err := marshalEnvelope(ack)
+	data, err := marshalEnvelope(ack, msgTypeAck)
 	require.NoError(t, err)
 	return data
 }
