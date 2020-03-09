@@ -282,12 +282,12 @@ type MessageOptions struct {
 	Key []byte
 
 	// AckInbox sets the NATS subject Liftbridge should publish the Message ack
-	// to. If it's not set, Liftbridge will not send an ack.
+	// to. If this is not set, the server will generate a random inbox.
 	AckInbox string
 
 	// CorrelationID sets the identifier used to correlate an ack with the
-	// published Message. If it's not set, the ack will not have a correlation
-	// id.
+	// published Message. If this is not set, the ack will not have a
+	// correlation id.
 	CorrelationID string
 
 	// AckPolicy controls the behavior of Message acks sent by the server. By
@@ -321,8 +321,8 @@ func Key(key []byte) MessageOption {
 }
 
 // AckInbox is a MessageOption to set the NATS subject Liftbridge should
-// publish the Message ack to. If it's not set, Liftbridge will not send an
-// ack.
+// publish the Message ack to. If this is not set, the server will generate a
+// random inbox.
 func AckInbox(ackInbox string) MessageOption {
 	return func(o *MessageOptions) {
 		o.AckInbox = ackInbox
@@ -330,7 +330,7 @@ func AckInbox(ackInbox string) MessageOption {
 }
 
 // CorrelationID is a MessageOption to set the identifier used to correlate an
-// ack with the published Message. If it's not set, the ack will not have a
+// ack with the published Message. If this is not set, the ack will not have a
 // correlation id.
 func CorrelationID(correlationID string) MessageOption {
 	return func(o *MessageOptions) {
