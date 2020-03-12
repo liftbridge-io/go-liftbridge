@@ -414,8 +414,8 @@ func (c *client) CreateStream(ctx context.Context, subject, name string, options
 	return err
 }
 
-// DeleteStream deletes a stream. Subject is the NATS subject the stream is
-// attached to, and name is the stream identifier, unique per subject.
+// DeleteStream deletes a stream. Name is the stream identifier, globally
+// unique.
 func (c *client) DeleteStream(ctx context.Context, name string) error {
 	req := &proto.DeleteStreamRequest{
 		Name: name,
