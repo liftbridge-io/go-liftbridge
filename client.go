@@ -51,6 +51,10 @@ var (
 	// ErrNoSuchPartition is returned by Subscribe if the specified stream
 	// partition does not exist in the Liftbridge cluster.
 	ErrNoSuchPartition = errors.New("stream partition does not exist")
+
+	// ErrStreamDeleted is sent to subscribers when the stream they are
+	// subscribed to has been deleted.
+	ErrStreamDeleted = errors.New("stream has been deleted")
 )
 
 // Handler is the callback invoked by Subscribe when a message is received on
@@ -726,6 +730,7 @@ func (c *client) dispatchStream(ctx context.Context, streamName string,
 		resubscribe bool
 		closed      bool
 	)
+LOOP:
 	for {
 		var (
 			msg, err = stream.Recv()
@@ -738,7 +743,8 @@ func (c *client) dispatchStream(ctx context.Context, streamName string,
 			lastError = err
 		}
 		if err == nil || (err != nil && code != codes.Canceled) {
-			if code == codes.Unavailable {
+			switch code {
+			case codes.Unavailable:
 				// This indicates the server went away or the connection was
 				// closed. Attempt to resubscribe to the stream leader starting
 				// at the last received offset unless the connection has been
@@ -749,7 +755,9 @@ func (c *client) dispatchStream(ctx context.Context, streamName string,
 				if !closed {
 					resubscribe = true
 				}
-				break
+				break LOOP
+			case codes.NotFound:
+				err = ErrStreamDeleted
 			}
 			handler(newProtoMessage(msg), err)
 		}
