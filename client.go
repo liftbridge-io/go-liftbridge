@@ -114,11 +114,13 @@ func MaxReplication() StreamOption {
 	}
 }
 
-// Partitions is a StreamOption to set the number of partitions for a stream. A
-// partitioned stream for NATS subject "foo.bar" with three partitions
-// internally maps to the NATS subjects "0.foo.bar", "1.foo.bar", and
-// "2.foo.bar". A single partition would map to "foo.bar" to match behavior of
-// an "un-partitioned" stream. If this is not set, it defaults to 1.
+// Partitions is a StreamOption to set the number of partitions for a stream.
+// Partitions are ordered, replicated, and durably stored on disk and serve as
+// the unit of storage and parallelism for a stream. A partitioned stream for
+// NATS subject "foo.bar" with three partitions internally maps to the NATS
+// subjects "foo.bar", "foo.bar.1", and "foo.bar.2". A single partition would
+// map to "foo.bar" to match behavior of an "un-partitioned" stream. If this is
+// not set, it defaults to 1.
 func Partitions(partitions int32) StreamOption {
 	return func(o *StreamOptions) error {
 		if partitions < 0 {
