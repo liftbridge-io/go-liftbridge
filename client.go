@@ -51,6 +51,10 @@ var (
 	// ErrNoSuchPartition is returned by Subscribe if the specified stream
 	// partition does not exist in the Liftbridge cluster.
 	ErrNoSuchPartition = errors.New("stream partition does not exist")
+
+	// ErrStreamDeleted is sent to subscribers when the stream they are
+	// subscribed to has been deleted.
+	ErrStreamDeleted = errors.New("stream has been deleted")
 )
 
 // Handler is the callback invoked by Subscribe when a message is received on
@@ -142,6 +146,10 @@ type Client interface {
 	// identifier, unique per subject. It returns ErrStreamExists if a stream
 	// with the given subject and name already exists.
 	CreateStream(ctx context.Context, subject, name string, opts ...StreamOption) error
+
+	// DeleteStream deletes a stream and all of its partitions. Name is the
+	// stream identifier, globally unique.
+	DeleteStream(ctx context.Context, name string) error
 
 	// Subscribe creates an ephemeral subscription for the given stream. It
 	// begins receiving messages starting at the configured position and waits
@@ -410,6 +418,16 @@ func (c *client) CreateStream(ctx context.Context, subject, name string, options
 		return ErrStreamExists
 	}
 	return err
+}
+
+// DeleteStream deletes a stream and all of its partitions. Name is the stream
+// identifier, globally unique.
+func (c *client) DeleteStream(ctx context.Context, name string) error {
+	req := &proto.DeleteStreamRequest{Name: name}
+	return c.doResilientRPC(func(client proto.APIClient) error {
+		_, err := client.DeleteStream(ctx, req)
+		return err
+	})
 }
 
 // SubscriptionOptions are used to control a subscription's behavior.
@@ -711,6 +729,7 @@ func (c *client) dispatchStream(ctx context.Context, streamName string,
 		resubscribe bool
 		closed      bool
 	)
+LOOP:
 	for {
 		var (
 			msg, err = stream.Recv()
@@ -723,7 +742,8 @@ func (c *client) dispatchStream(ctx context.Context, streamName string,
 			lastError = err
 		}
 		if err == nil || (err != nil && code != codes.Canceled) {
-			if code == codes.Unavailable {
+			switch code {
+			case codes.Unavailable:
 				// This indicates the server went away or the connection was
 				// closed. Attempt to resubscribe to the stream leader starting
 				// at the last received offset unless the connection has been
@@ -734,7 +754,9 @@ func (c *client) dispatchStream(ctx context.Context, streamName string,
 				if !closed {
 					resubscribe = true
 				}
-				break
+				break LOOP
+			case codes.NotFound:
+				err = ErrStreamDeleted
 			}
 			handler(newProtoMessage(msg), err)
 		}
