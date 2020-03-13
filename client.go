@@ -421,14 +421,11 @@ func (c *client) CreateStream(ctx context.Context, subject, name string, options
 // DeleteStream deletes a stream and all of its partitions. Name is the stream
 // identifier, globally unique.
 func (c *client) DeleteStream(ctx context.Context, name string) error {
-	req := &proto.DeleteStreamRequest{
-		Name: name,
-	}
-	err := c.doResilientRPC(func(client proto.APIClient) error {
+	req := &proto.DeleteStreamRequest{Name: name}
+	return c.doResilientRPC(func(client proto.APIClient) error {
 		_, err := client.DeleteStream(ctx, req)
 		return err
 	})
-	return err
 }
 
 // SubscriptionOptions are used to control a subscription's behavior.
