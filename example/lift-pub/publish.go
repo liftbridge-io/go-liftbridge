@@ -38,7 +38,7 @@ func main() {
 	for i := 0; i < count; i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if _, err := client.Publish(ctx, "bar",
+		if _, err := client.Publish(ctx, "bar-stream",
 			[]byte(strconv.FormatInt(int64(i), 10)),
 			lift.Key(keys[rand.Intn(len(keys))]),
 			lift.PartitionByKey(),

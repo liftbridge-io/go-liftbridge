@@ -48,6 +48,10 @@ var (
 	// already exists in the Liftbridge cluster.
 	ErrStreamExists = errors.New("stream already exists")
 
+	// ErrNoSuchStream is returned by DeleteStream if the specified stream does
+	// not exist in the Liftbridge cluster.
+	ErrNoSuchStream = errors.New("stream does not exist")
+
 	// ErrNoSuchPartition is returned by Subscribe if the specified stream
 	// partition does not exist in the Liftbridge cluster.
 	ErrNoSuchPartition = errors.New("stream partition does not exist")
@@ -424,10 +428,14 @@ func (c *client) CreateStream(ctx context.Context, subject, name string, options
 // identifier, globally unique.
 func (c *client) DeleteStream(ctx context.Context, name string) error {
 	req := &proto.DeleteStreamRequest{Name: name}
-	return c.doResilientRPC(func(client proto.APIClient) error {
+	err := c.doResilientRPC(func(client proto.APIClient) error {
 		_, err := client.DeleteStream(ctx, req)
 		return err
 	})
+	if status.Code(err) == codes.NotFound {
+		return ErrNoSuchStream
+	}
+	return err
 }
 
 // SubscriptionOptions are used to control a subscription's behavior.
