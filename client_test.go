@@ -155,6 +155,34 @@ func TestConnectNoAddrs(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestDeleteStream(t *testing.T) {
+	defer cleanupStorage(t)
+
+	// Use a central NATS server.
+	ns := natsdTest.RunDefaultServer()
+	defer ns.Shutdown()
+
+	config := getTestConfig("a", true, 5050)
+	s := runServerWithConfig(t, config)
+	defer s.Stop()
+
+	client, err := Connect([]string{"localhost:5050"})
+	require.NoError(t, err)
+	defer client.Close()
+
+	// Wait for server to elect itself leader.
+	getMetadataLeader(t, 10*time.Second, s)
+
+	err = client.DeleteStream(context.Background(), "foo")
+	require.Equal(t, ErrNoSuchStream, err)
+
+	require.NoError(t, client.CreateStream(context.Background(), "foo", "foo"))
+
+	metadata, err := client.FetchMetadata(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, metadata.GetStream("foo"))
+}
+
 func TestClientSubscribe(t *testing.T) {
 	defer cleanupStorage(t)
 
@@ -186,7 +214,8 @@ func TestClientSubscribe(t *testing.T) {
 	}
 
 	for i := 0; i < count; i++ {
-		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 		_, err := client.Publish(ctx, "bar", expected[i].Value, Key(expected[i].Key))
 		require.NoError(t, err)
 	}
@@ -228,7 +257,8 @@ func TestClientSubscribe(t *testing.T) {
 	}
 
 	for i := 0; i < count; i++ {
-		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 		_, err := client.Publish(ctx, "bar", expected[i+count].Value,
 			Key(expected[i+count].Key))
 		require.NoError(t, err)
@@ -376,7 +406,8 @@ func TestClientPublishAck(t *testing.T) {
 	}
 
 	for i := 0; i < count; i++ {
-		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 		ack, err := client.Publish(ctx, "bar", expected[i].Value,
 			Key(expected[i].Key), AckPolicyLeader())
 		require.NoError(t, err)
