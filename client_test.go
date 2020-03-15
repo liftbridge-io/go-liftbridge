@@ -170,10 +170,9 @@ func TestDeleteStream(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	// Wait for server to elect itself leader.
-	getMetadataLeader(t, 10*time.Second, s)
-
-	err = client.DeleteStream(context.Background(), "foo")
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	err = client.DeleteStream(ctx, "foo")
 	require.Equal(t, ErrNoSuchStream, err)
 
 	require.NoError(t, client.CreateStream(context.Background(), "foo", "foo"))
@@ -181,6 +180,12 @@ func TestDeleteStream(t *testing.T) {
 	metadata, err := client.FetchMetadata(context.Background())
 	require.NoError(t, err)
 	require.NotNil(t, metadata.GetStream("foo"))
+
+	require.NoError(t, client.DeleteStream(ctx, "foo"))
+
+	metadata, err = client.FetchMetadata(context.Background())
+	require.NoError(t, err)
+	require.Nil(t, metadata.GetStream("foo"))
 }
 
 func TestClientSubscribe(t *testing.T) {
