@@ -155,6 +155,10 @@ type Client interface {
 	// stream identifier, globally unique.
 	DeleteStream(ctx context.Context, name string) error
 
+	// PauseStream pauses a stream and all of its partitions. Name is the stream
+	// identifier, globally unique.
+	PauseStream(ctx context.Context, name string) error
+
 	// Subscribe creates an ephemeral subscription for the given stream. It
 	// begins receiving messages starting at the configured position and waits
 	// for new messages when it reaches the end of the stream. The default
@@ -430,6 +434,20 @@ func (c *client) DeleteStream(ctx context.Context, name string) error {
 	req := &proto.DeleteStreamRequest{Name: name}
 	err := c.doResilientRPC(func(client proto.APIClient) error {
 		_, err := client.DeleteStream(ctx, req)
+		return err
+	})
+	if status.Code(err) == codes.NotFound {
+		return ErrNoSuchStream
+	}
+	return err
+}
+
+// PauseStream pauses a stream and all of its partitions. Name is the stream
+// identifier, globally unique.
+func (c *client) PauseStream(ctx context.Context, name string) error {
+	req := &proto.PauseStreamRequest{Name: name}
+	err := c.doResilientRPC(func(client proto.APIClient) error {
+		_, err := client.PauseStream(ctx, req)
 		return err
 	})
 	if status.Code(err) == codes.NotFound {
