@@ -155,9 +155,9 @@ type Client interface {
 	// stream identifier, globally unique.
 	DeleteStream(ctx context.Context, name string) error
 
-	// PauseStream pauses a stream and all of its partitions. Name is the stream
-	// identifier, globally unique.
-	PauseStream(ctx context.Context, name string) error
+	// PauseStream pauses a stream and some or all of its partitions. Name is
+	// the stream identifier, globally unique.
+	PauseStream(ctx context.Context, name string, opts ...PausingOption) error
 
 	// Subscribe creates an ephemeral subscription for the given stream. It
 	// begins receiving messages starting at the configured position and waits
@@ -442,16 +442,61 @@ func (c *client) DeleteStream(ctx context.Context, name string) error {
 	return err
 }
 
-// PauseStream pauses a stream and all of its partitions. Name is the stream
-// identifier, globally unique.
-func (c *client) PauseStream(ctx context.Context, name string) error {
-	req := &proto.PauseStreamRequest{Name: name}
+// PausingOptions are used to setup stream pausing.
+type PausingOptions struct {
+	// PartitionIndices sets the list of partitions to pause, or all of them if
+	// nil.
+	PartitionIndices []int32
+
+	// ResumeAllAtOnce allows resuming all partitions if one of them is
+	// published to, instead of resuming only that partition.
+	ResumeAllAtOnce bool
+}
+
+// PausingOption is a function on the PausingOptions for a pause call. These are
+// used to configure particular pausing options.
+type PausingOption func(*PausingOptions) error
+
+// PartitionIndices sets the list of partitions indices to pause, or all of
+// them if nil.
+func PartitionIndices(indices ...int32) PausingOption {
+	return func(o *PausingOptions) error {
+		o.PartitionIndices = indices
+		return nil
+	}
+}
+
+// ResumeAllAtOnce allows resuming all partitions if one of them is published
+// to, instead of resuming only that partition.
+func ResumeAllAtOnce(resumeAllAtOnce bool) PausingOption {
+	return func(o *PausingOptions) error {
+		o.ResumeAllAtOnce = resumeAllAtOnce
+		return nil
+	}
+}
+
+// PauseStream pauses a stream and some or all of its partitions. Name is the
+// stream identifier, globally unique. It returns an ErrNoSuchPartition if the
+// given stream or partition does not exist.
+func (c *client) PauseStream(ctx context.Context, name string, options ...PausingOption) error {
+	opts := &PausingOptions{}
+	for _, opt := range options {
+		if err := opt(opts); err != nil {
+			return err
+		}
+	}
+
+	req := &proto.PauseStreamRequest{
+		Name:             name,
+		PartitionIndices: opts.PartitionIndices,
+		ResumeAllAtOnce:  opts.ResumeAllAtOnce,
+	}
 	err := c.doResilientRPC(func(client proto.APIClient) error {
 		_, err := client.PauseStream(ctx, req)
 		return err
 	})
 	if status.Code(err) == codes.NotFound {
-		return ErrNoSuchStream
+		return ErrNoSuchPartition
 	}
 	return err
 }
