@@ -156,8 +156,12 @@ type Client interface {
 	DeleteStream(ctx context.Context, name string) error
 
 	// PauseStream pauses a stream and some or all of its partitions. Name is
-	// the stream identifier, globally unique.
-	PauseStream(ctx context.Context, name string, opts ...PausingOption) error
+	// the stream identifier, globally unique. It returns an ErrNoSuchPartition
+	// if the given stream or partition does not exist. By default, this will
+	// pause all partitions. A partition is resumed when it is published to via
+	// the Liftbridge Publish API or ResumeAll is enabled and another partition
+	// in the stream is published to.
+	PauseStream(ctx context.Context, name string, opts ...PauseOption) error
 
 	// Subscribe creates an ephemeral subscription for the given stream. It
 	// begins receiving messages starting at the configured position and waits
@@ -442,44 +446,47 @@ func (c *client) DeleteStream(ctx context.Context, name string) error {
 	return err
 }
 
-// PausingOptions are used to setup stream pausing.
-type PausingOptions struct {
-	// PartitionIndices sets the list of partitions to pause, or all of them if
-	// nil.
-	PartitionIndices []int32
+// PauseOptions are used to setup stream pausing.
+type PauseOptions struct {
+	// Partitions sets the list of partitions to pause or all of them if
+	// nil/empty.
+	Partitions []int32
 
-	// ResumeAllAtOnce allows resuming all partitions if one of them is
-	// published to, instead of resuming only that partition.
-	ResumeAllAtOnce bool
+	// ResumeAll will resume all partitions in the stream if one of them is
+	// published to instead of resuming only that partition.
+	ResumeAll bool
 }
 
-// PausingOption is a function on the PausingOptions for a pause call. These are
+// PauseOption is a function on the PauseOptions for a pause call. These are
 // used to configure particular pausing options.
-type PausingOption func(*PausingOptions) error
+type PauseOption func(*PauseOptions) error
 
-// PartitionIndices sets the list of partitions indices to pause, or all of
-// them if nil.
-func PartitionIndices(indices ...int32) PausingOption {
-	return func(o *PausingOptions) error {
-		o.PartitionIndices = indices
+// PausePartitions sets the list of partition to pause or all of them if
+// nil/empty.
+func PausePartitions(partitions ...int32) PauseOption {
+	return func(o *PauseOptions) error {
+		o.Partitions = partitions
 		return nil
 	}
 }
 
-// ResumeAllAtOnce allows resuming all partitions if one of them is published
-// to, instead of resuming only that partition.
-func ResumeAllAtOnce(resumeAllAtOnce bool) PausingOption {
-	return func(o *PausingOptions) error {
-		o.ResumeAllAtOnce = resumeAllAtOnce
+// ResumeAll will resume all partitions in the stream if one of them is
+// published to instead of resuming only that partition.
+func ResumeAll() PauseOption {
+	return func(o *PauseOptions) error {
+		o.ResumeAll = true
 		return nil
 	}
 }
 
 // PauseStream pauses a stream and some or all of its partitions. Name is the
 // stream identifier, globally unique. It returns an ErrNoSuchPartition if the
-// given stream or partition does not exist.
-func (c *client) PauseStream(ctx context.Context, name string, options ...PausingOption) error {
-	opts := &PausingOptions{}
+// given stream or partition does not exist. By default, this will pause all
+// partitions. A partition is resumed when it is published to via the
+// Liftbridge Publish API or ResumeAll is enabled and another partition in the
+// stream is published to.
+func (c *client) PauseStream(ctx context.Context, name string, options ...PauseOption) error {
+	opts := &PauseOptions{}
 	for _, opt := range options {
 		if err := opt(opts); err != nil {
 			return err
@@ -487,9 +494,9 @@ func (c *client) PauseStream(ctx context.Context, name string, options ...Pausin
 	}
 
 	req := &proto.PauseStreamRequest{
-		Name:             name,
-		PartitionIndices: opts.PartitionIndices,
-		ResumeAllAtOnce:  opts.ResumeAllAtOnce,
+		Name:       name,
+		Partitions: opts.Partitions,
+		ResumeAll:  opts.ResumeAll,
 	}
 	err := c.doResilientRPC(func(client proto.APIClient) error {
 		_, err := client.PauseStream(ctx, req)
