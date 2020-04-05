@@ -522,8 +522,8 @@ type SubscriptionOptions struct {
 	// Partition sets the stream partition to consume.
 	Partition int32
 
-	// ReadReplica sets client's ability to read from replica
-	// instead of read from leader
+	// ReadReplica sets client's ability to subscribe from replica
+	// instead of subscribing to leader
 	ReadReplica bool
 }
 
@@ -575,6 +575,17 @@ func StartAtLatestReceived() SubscriptionOption {
 func StartAtEarliestReceived() SubscriptionOption {
 	return func(o *SubscriptionOptions) error {
 		o.StartPosition = StartPosition(proto.StartPosition_EARLIEST)
+		return nil
+	}
+}
+
+// ReadReplica sets read replica option. If true, the client will request
+// subscription from a replica instead of subscribing to partition's leader
+// there may be cases where replicas do not catch up with partition's leader
+// so use this option with consideration
+func ReadReplica(readReplica bool) SubscriptionOption {
+	return func(o *SubscriptionOptions) error {
+		o.ReadReplica = readReplica
 		return nil
 	}
 }
@@ -768,6 +779,7 @@ func (c *client) subscribe(ctx context.Context, stream string,
 				StartOffset:    opts.StartOffset,
 				StartTimestamp: opts.StartTimestamp.UnixNano(),
 				Partition:      opts.Partition,
+				ReadReplica:    opts.ReadReplica,
 			}
 		)
 		st, err = client.Subscribe(ctx, req)

@@ -291,12 +291,21 @@ func (m *metadataCache) getAddr(stream string, partitionID int32, readReplica bo
 	if partition == nil {
 		return "", errors.New("no known partition")
 	}
-	// Request that the subription can be done
-	// from a replica
+	// Request to subscribe to replica only
+	// it will pick a random replica which is not the leader
 	if readReplica {
 		replicas := partition.Replicas()
-		randomReplica := replicas[rand.Intn(len(replicas))]
-		return randomReplica.Addr(), nil
+		// if there is only one replica, presume that this is the leader
+		if len(replicas) == 1 {
+			return "", errors.New("no follower exists")
+		}
+		for {
+			randomReplica := replicas[rand.Intn(len(replicas))]
+			if randomReplica != partition.Leader() {
+				return randomReplica.Addr(), nil
+			}
+		}
+
 	}
 	if partition.Leader() == nil {
 		return "", errors.New("no known leader for partition")
