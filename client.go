@@ -522,7 +522,7 @@ type SubscriptionOptions struct {
 	// Partition sets the stream partition to consume.
 	Partition int32
 
-	// ReadReplica sets client's ability to subscribe from replica
+	// ReadReplica sets client's ability to subscribe from an ISR replica
 	// instead of subscribing to leader
 	ReadReplica bool
 }
@@ -580,7 +580,7 @@ func StartAtEarliestReceived() SubscriptionOption {
 }
 
 // ReadReplica sets read replica option. If true, the client will request
-// subscription from a replica instead of subscribing to partition's leader
+// subscription from an ISR replica instead of subscribing to partition's leader
 // there may be cases where replicas do not catch up with partition's leader
 // so use this option with consideration
 func ReadReplica(readReplica bool) SubscriptionOption {
