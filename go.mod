@@ -1,4 +1,4 @@
-module github.com/LaPetiteSouris/go-liftbridge
+module github.com/liftbridge-io/go-liftbridge
 
 go 1.13
 

@@ -279,7 +279,7 @@ func (m *metadataCache) getAddrs() []string {
 }
 
 // getAddr returns the broker address for the given stream partition.
-func (m *metadataCache) getAddr(stream string, partitionID int32, readReplica bool) (string, error) {
+func (m *metadataCache) getAddr(stream string, partitionID int32, readISRReplica bool) (string, error) {
 	m.mu.RLock()
 	metadata := m.metadata
 	m.mu.RUnlock()
@@ -291,22 +291,11 @@ func (m *metadataCache) getAddr(stream string, partitionID int32, readReplica bo
 	if partition == nil {
 		return "", errors.New("no known partition")
 	}
-	// Request to subscribe to replica only
-	// it will pick a random replica which is not the leader
-	if readReplica {
+	// Request to subscribe to a random ISR
+	if readISRReplica {
 		replicasISR := partition.ISR()
-		// if there is no ISR replica, which means there is
-		// no replica
-		if len(replicasISR) == 1 {
-			return "", errors.New("no follower exists")
-		}
-		for {
-			randomReplica := replicasISR[rand.Intn(len(replicasISR))]
-			if randomReplica != partition.Leader() {
-				return randomReplica.Addr(), nil
-			}
-		}
-
+		randomReplica := replicasISR[rand.Intn(len(replicasISR))]
+		return randomReplica.Addr(), nil
 	}
 	if partition.Leader() == nil {
 		return "", errors.New("no known leader for partition")

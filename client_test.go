@@ -505,34 +505,6 @@ func TestClientPublishNoAck(t *testing.T) {
 	}
 }
 
-// Ensure an error is raised if request to subscribe to follower replica
-// but no follower exists for the partition
-func TestSubscribetoReplicaError(t *testing.T) {
-	defer cleanupStorage(t)
-
-	// Use a central NATS server.
-	ns := natsdTest.RunDefaultServer()
-	defer ns.Shutdown()
-
-	config := getTestConfig("a", true, 5050)
-	s := runServerWithConfig(t, config)
-	defer s.Stop()
-
-	client, err := Connect([]string{"localhost:5050"})
-	require.NoError(t, err)
-
-	// Wait for server to elect itself leader.
-	getMetadataLeader(t, 10*time.Second, s)
-
-	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
-
-	err = client.Subscribe(context.Background(), "bar", func(msg Message, err error) {
-		require.NoError(t, err)
-	}, ReadReplica(true))
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "no follower exists")
-}
-
 // Ensure headers are set correctly on messages.
 func TestClientPublishHeaders(t *testing.T) {
 	defer cleanupStorage(t)
