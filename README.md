@@ -129,6 +129,13 @@ client.Subscribe(ctx, name, func(msg lift.Message, err error) {
 client.Subscribe(ctx, name, func(msg lift.Message, err error) {
 	fmt.Println(msg.Offset(), string(msg.Value()))
 }, lift.StartAtTimeDelta(time.Minute))
+
+// Subscribe to a random ISR replica
+// this helps reduce the work load
+// for partition leader
+client.Subscribe(ctx, name, func(msg lift.Message, err error) {
+	fmt.Println(msg.Offset(), string(msg.Value()))
+}, lift.ReadISRReplica())
 ```
 
 ### Publishing
