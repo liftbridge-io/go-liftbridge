@@ -10,33 +10,6 @@ import (
 	proto "github.com/liftbridge-io/liftbridge-api/go"
 )
 
-type streamIndex struct {
-	byName    map[string]*StreamInfo
-	bySubject map[string][]*StreamInfo
-}
-
-func newStreamIndex() *streamIndex {
-	return &streamIndex{
-		byName:    make(map[string]*StreamInfo),
-		bySubject: make(map[string][]*StreamInfo),
-	}
-}
-
-// addStream adds the given stream to the index.
-func (s streamIndex) addStream(stream *StreamInfo) {
-	streams, ok := s.bySubject[stream.subject]
-	if !ok {
-		streams = []*StreamInfo{}
-	}
-	s.bySubject[stream.subject] = append(streams, stream)
-	s.byName[stream.name] = stream
-}
-
-// getStream returns the given stream or nil if it does not exist.
-func (s streamIndex) getStream(name string) *StreamInfo {
-	return s.byName[name]
-}
-
 // StreamInfo contains information for a Liftbridge stream.
 type StreamInfo struct {
 	subject    string
@@ -118,10 +91,10 @@ type Metadata struct {
 	lastUpdated time.Time
 	brokers     map[string]*BrokerInfo
 	addrs       map[string]struct{}
-	streams     *streamIndex
+	streams     map[string]*StreamInfo
 }
 
-func newMetadata(brokers map[string]*BrokerInfo, streams *streamIndex) *Metadata {
+func newMetadata(brokers map[string]*BrokerInfo, streams map[string]*StreamInfo) *Metadata {
 	addrs := make(map[string]struct{}, len(brokers))
 	for _, broker := range brokers {
 		addrs[broker.Addr()] = struct{}{}
@@ -168,13 +141,7 @@ func (m *Metadata) Addrs() []string {
 
 // GetStream returns the given stream or nil if unknown.
 func (m *Metadata) GetStream(name string) *StreamInfo {
-	return m.streams.getStream(name)
-}
-
-// GetStreams returns a map containing all streams with the given subject. This
-// does not match on wildcard subjects, e.g.  "foo.*".
-func (m *Metadata) GetStreams(subject string) []*StreamInfo {
-	return m.streams.bySubject[subject]
+	return m.streams[name]
 }
 
 // PartitionCountForStream returns the number of partitions for the given
@@ -227,7 +194,7 @@ func (m *metadataCache) update(ctx context.Context) (*Metadata, error) {
 		}
 	}
 
-	streamIndex := newStreamIndex()
+	streams := make(map[string]*StreamInfo)
 	for _, streamMetadata := range resp.Metadata {
 		stream := &StreamInfo{
 			subject:    streamMetadata.Subject,
@@ -250,10 +217,10 @@ func (m *metadataCache) update(ctx context.Context) (*Metadata, error) {
 				isr:      isr,
 			}
 		}
-		streamIndex.addStream(stream)
+		streams[stream.name] = stream
 	}
 
-	metadata := newMetadata(brokers, streamIndex)
+	metadata := newMetadata(brokers, streams)
 
 	m.mu.Lock()
 	m.metadata = metadata
