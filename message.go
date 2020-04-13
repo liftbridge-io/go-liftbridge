@@ -232,7 +232,7 @@ func (k *keyPartitioner) Partition(stream string, key, value []byte, metadata *M
 		return 0
 	}
 
-	return int32(hasher(key)) % partitions
+	return int32(hasher(key) % uint32(partitions))
 }
 
 type streamCounter struct {
