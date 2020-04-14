@@ -97,7 +97,8 @@ client.CreateStream(context.Background(), "foo.*", "my-stream", lift.MaxReplicat
 [Subscriptions](https://github.com/liftbridge-io/liftbridge/blob/master/documentation/concepts.md#subscription)
 are how Liftbridge streams are consumed. Clients can choose where to start
 consuming messages from in a stream. This is controlled using options passed to
-Subscribe.
+Subscribe. Client can also choose to subscribe from partition's leader (by default)
+or from a random ISR replica
 
 ```go
 // Subscribe starting with new messages only.
@@ -129,6 +130,13 @@ client.Subscribe(ctx, name, func(msg lift.Message, err error) {
 client.Subscribe(ctx, name, func(msg lift.Message, err error) {
 	fmt.Println(msg.Offset(), string(msg.Value()))
 }, lift.StartAtTimeDelta(time.Minute))
+
+// Subscribe to a random ISR replica
+// this helps reduce the work load
+// for partition leader
+client.Subscribe(ctx, name, func(msg lift.Message, err error) {
+	fmt.Println(msg.Offset(), string(msg.Value()))
+}, lift.ReadISRReplica())
 ```
 
 ### Publishing

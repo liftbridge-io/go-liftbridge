@@ -2,6 +2,7 @@ cloud.google.com/go v0.26.0/go.mod h1:aQUYkXzVsufM+DwF1aE+0xfcU+56JwCaLick0ClmMT
 cloud.google.com/go v0.34.0/go.mod h1:aQUYkXzVsufM+DwF1aE+0xfcU+56JwCaLick0ClmMTw=
 cloud.google.com/go v0.38.0/go.mod h1:990N+gfupTy94rShfmMCWGDn0LpTmnzTp2qbd1dvSRU=
 cloud.google.com/go v0.41.0/go.mod h1:OauMR7DV8fzvZIl2qg6rkaIhD/vmgk4iwEw/h6ercmg=
+github.com/BurntSushi/toml v0.3.1 h1:WXkYYl6Yr3qBf1K79EBnL4mak0OimBfB0XUf9Vl28OQ=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
 github.com/DataDog/datadog-go v2.2.0+incompatible/go.mod h1:LButxg5PwREeZtORoXG3tL4fMGNddJ+vMq1mwgfaqoQ=
@@ -102,6 +103,7 @@ github.com/google/pprof v0.0.0-20181206194817-3ea8567a2e57/go.mod h1:zfwlbNMJ+OI
 github.com/google/pprof v0.0.0-20190515194954-54271f7e092f/go.mod h1:zfwlbNMJ+OItoe0UupaVj+oy1omPYYDuagoSzA8v9mc=
 github.com/googleapis/gax-go/v2 v2.0.4/go.mod h1:0Wqv26UfaUD9n4G6kQubkQ+KchISgw+vpHVxEJEs9eg=
 github.com/googleapis/gax-go/v2 v2.0.5/go.mod h1:DWXyrwAJ9X0FpwwEdw+IPEYBICEFu5mhpdKc/us6bOk=
+github.com/gopherjs/gopherjs v0.0.0-20181017120253-0766667cb4d1 h1:EGx4pi6eqNxGaHF6qqu48+N2wcFQ5qg5FXgOdqsJ5d8=
 github.com/gopherjs/gopherjs v0.0.0-20181017120253-0766667cb4d1/go.mod h1:wJfORRmW1u3UXTncJ5qlYoELFm8eSnnEO6hX4iZ3EWY=
 github.com/gorilla/websocket v1.4.0/go.mod h1:E7qHFY5m1UJ88s3WnNqhKjPHQ0heANvMoAMk2YaljkQ=
 github.com/grpc-ecosystem/go-grpc-middleware v1.0.0/go.mod h1:FiyG127CGDf3tlThmgyCl78X/SZQqEOJBCDaAfeWzPs=
@@ -156,6 +158,7 @@ github.com/jonboulle/clockwork v0.1.0/go.mod h1:Ii8DK3G1RaLaWxj9trq07+26W01tbo22
 github.com/json-iterator/go v1.1.6/go.mod h1:+SdeFBvtyEkXs7REEP0seUULqWtbJapLOCVDaaPEHmU=
 github.com/json-iterator/go v1.1.9/go.mod h1:KdQUCv79m/52Kvf8AW2vK1V8akMuk1QjK/uOdHXbAo4=
 github.com/jstemmer/go-junit-report v0.0.0-20190106144839-af01ea7f8024/go.mod h1:6v2b51hI/fHJwM22ozAgKL4VKDeJcHhJFhtBdhmNjmU=
+github.com/jtolds/gls v4.20.0+incompatible h1:xdiiI2gbIgH/gLH7ADydsJ1uDOEzR8yvV7C0MuV77Wo=
 github.com/jtolds/gls v4.20.0+incompatible/go.mod h1:QJZ7F/aHp+rZTRtaJ1ow/lLfFfVYBRgL+9YlvaHOwJU=
 github.com/julienschmidt/httprouter v1.2.0/go.mod h1:SYymIcj16QtmaHHD7aYtjjsJG7VTCxuUUipMqKk8s4w=
 github.com/kisielk/errcheck v1.1.0/go.mod h1:EZBBE59ingxPouuu3KfxchcWSUPOHkagtvWXihfKN4Q=
@@ -177,6 +180,7 @@ github.com/liftbridge-io/go-liftbridge v0.0.0-20191106171334-84163faf9fdd/go.mod
 github.com/liftbridge-io/go-liftbridge v0.0.0-20191106180712-4f7e4b9d8611/go.mod h1:E+5gzmn2VHTfwQ21r0bujaQrUe5o1UtHzCAr+Xpo47A=
 github.com/liftbridge-io/go-liftbridge v1.0.0-alpha/go.mod h1:2H2qD8RQzUwR6yOSM77OLsMAwn9XDNIlkqHWtJP6jnk=
 github.com/liftbridge-io/go-liftbridge v1.0.0-beta.0.20200313173700-9ff0d5810d33/go.mod h1:16dPbT2GfxS2V4KXUHyUgUYWSvxLsQAKQt/nP6GRNrc=
+github.com/liftbridge-io/go-liftbridge v1.0.0-beta.0.20200326225148-69c47c098aea h1:gaQl/jXyEkkaXBmXSopfcn8Bke7+32BahJ7rvThtmWY=
 github.com/liftbridge-io/go-liftbridge v1.0.0-beta.0.20200326225148-69c47c098aea/go.mod h1:qxFrCytECWnQEY3KqA44X/oH9ed/HB4sNZgmingo+hY=
 github.com/liftbridge-io/liftbridge v0.0.0-20190628061900-5f565727d49f/go.mod h1:DgUnOkzaVLgIOQ3W7ztMm0+xQmDaEM+tcgGCAdlZj8s=
 github.com/liftbridge-io/liftbridge v0.0.0-20190704001405-928a9d17c609/go.mod h1:d9iQ/6VLp7paFMnNukU2nV1PnNjkz2vpNQzYS4zIy8Y=
@@ -187,8 +191,6 @@ github.com/liftbridge-io/liftbridge v0.0.0-20200118200014-2e716da78b8a h1:S3PsQK
 github.com/liftbridge-io/liftbridge v0.0.0-20200118200014-2e716da78b8a/go.mod h1:j3eqt63LZefajwMwcLeYtS/BEFHqPXA7ogvjJCsB1h8=
 github.com/liftbridge-io/liftbridge v1.0.0-beta.0.20200313100307-28190ef9c3cb h1:6QvaIMeztt1GU+GBxPMENJDqKGIsgjNMiQpYIpIb+fQ=
 github.com/liftbridge-io/liftbridge v1.0.0-beta.0.20200313100307-28190ef9c3cb/go.mod h1:ENfX9Vr6U/6MtG4ekOWk7vk+hX4YYXYQ/QErZOYedYs=
-github.com/liftbridge-io/liftbridge v1.0.0-beta.0.20200314000602-2b79c82204f0 h1:ow//AO4VwxFVKdtm+xvXppAXdEocImzDVXrGe31zrVI=
-github.com/liftbridge-io/liftbridge v1.0.0-beta.0.20200314000602-2b79c82204f0/go.mod h1:v16hTuyoQrOobj+oUvgiJwQM5DY0QV76ysszAGH2Vis=
 github.com/liftbridge-io/liftbridge v1.0.0-beta.0.20200315000533-62544c84977c h1:Kzb9hi34BN4ieS+0cuT/3ZeWE2goXi6sd37aVkyBzWk=
 github.com/liftbridge-io/liftbridge v1.0.0-beta.0.20200315000533-62544c84977c/go.mod h1:v16hTuyoQrOobj+oUvgiJwQM5DY0QV76ysszAGH2Vis=
 github.com/liftbridge-io/liftbridge v1.0.0-beta.0.20200326225735-0a9b2e0ff4e6 h1:TnsBiFCTchJoanT3Hor60efjv9bxxH+seCu7fR3IbAM=
@@ -198,11 +200,12 @@ github.com/liftbridge-io/liftbridge-api v0.0.0-20200118015119-3db283f59b10 h1:k1
 github.com/liftbridge-io/liftbridge-api v0.0.0-20200118015119-3db283f59b10/go.mod h1:6IFEFZ4ncnOgeDVjSt0vh1lKNhlJ5YT9xnG1eRa9LC8=
 github.com/liftbridge-io/liftbridge-api v1.0.0-alpha h1:NwtHTgIdYNQXkLdmLHm9rguNvbtT4OHAs6FSSrHTq1Q=
 github.com/liftbridge-io/liftbridge-api v1.0.0-alpha/go.mod h1:6IFEFZ4ncnOgeDVjSt0vh1lKNhlJ5YT9xnG1eRa9LC8=
-github.com/liftbridge-io/liftbridge-api v1.0.0-beta/go.mod h1:6IFEFZ4ncnOgeDVjSt0vh1lKNhlJ5YT9xnG1eRa9LC8=
 github.com/liftbridge-io/liftbridge-api v1.0.0-beta.0.20200312161101-bf413bcbd765 h1:ainowikclNBfxawwBRZjm1ZF2GXIqTArUO2S2Vd+UA0=
 github.com/liftbridge-io/liftbridge-api v1.0.0-beta.0.20200312161101-bf413bcbd765/go.mod h1:6IFEFZ4ncnOgeDVjSt0vh1lKNhlJ5YT9xnG1eRa9LC8=
 github.com/liftbridge-io/liftbridge-api v1.0.0-beta.0.20200326224922-0afea69beb86 h1:Q29vm1buKRIYHfJH8ErDBTMsuLe34wVIsg8lnlKdObg=
 github.com/liftbridge-io/liftbridge-api v1.0.0-beta.0.20200326224922-0afea69beb86/go.mod h1:6IFEFZ4ncnOgeDVjSt0vh1lKNhlJ5YT9xnG1eRa9LC8=
+github.com/liftbridge-io/liftbridge-api v1.0.0-beta.0.20200413231716-376c660e0f44 h1:I2xukswg2r54JNIsqHT3W0xpknBOfKOh5U1ed8ODico=
+github.com/liftbridge-io/liftbridge-api v1.0.0-beta.0.20200413231716-376c660e0f44/go.mod h1:6IFEFZ4ncnOgeDVjSt0vh1lKNhlJ5YT9xnG1eRa9LC8=
 github.com/liftbridge-io/liftbridge-grpc v0.0.0-20190829220806-66e3ee4b7943/go.mod h1:ObGO38WdO4ldLsa2oUFcultUk0rggc+yZWcBb7qjnDI=
 github.com/liftbridge-io/liftbridge-grpc v0.0.0-20190910222614-5694b15f251d/go.mod h1:ObGO38WdO4ldLsa2oUFcultUk0rggc+yZWcBb7qjnDI=
 github.com/liftbridge-io/nats-on-a-log v0.0.0-20180718011723-80d0727461af/go.mod h1:4tC6R+N3facyfCwDuuuLkFF/25ceiZEwoQUzIez2dVo=
@@ -313,7 +316,9 @@ github.com/sirupsen/logrus v1.4.2 h1:SPIRibHv4MatM3XXNO2BJeFLZwZ2LvZgfQ5+UNI2im4
 github.com/sirupsen/logrus v1.4.2/go.mod h1:tLMulIdttU9McNUspp0xgXVQah82FyeX6MwdIuYE2rE=
 github.com/sirupsen/logrus v1.5.0 h1:1N5EYkVAPEywqZRJd7cwnRtCb6xJx7NH3T3WUTF980Q=
 github.com/sirupsen/logrus v1.5.0/go.mod h1:+F7Ogzej0PZc/94MaYx/nvG9jOFMD2osvC3s+Squfpo=
+github.com/smartystreets/assertions v0.0.0-20180927180507-b2de0cb4f26d h1:zE9ykElWQ6/NYmHa3jpm/yHnI4xSofP+UP6SpjHcSeM=
 github.com/smartystreets/assertions v0.0.0-20180927180507-b2de0cb4f26d/go.mod h1:OnSkiWE9lh6wB0YB77sQom3nweQdgAjqCqsofrRNTgc=
+github.com/smartystreets/goconvey v1.6.4 h1:fv0U8FUIMPNf1L9lnHLvLhgicrIVChEkdzIKYqbNC9s=
 github.com/smartystreets/goconvey v1.6.4/go.mod h1:syvi0/a8iFYH4r/RixwvyeAJjdLS9QV7WQ/tjFTllLA=
 github.com/soheilhy/cmux v0.1.4/go.mod h1:IM3LyeVVIOuxMH7sFAkER9+bJ4dT7Ms6E4xg4kGIyLM=
 github.com/spaolacci/murmur3 v0.0.0-20180118202830-f09979ecbc72/go.mod h1:JwIasOWyU6f++ZhiEuf87xNszmSA2myDM2Kzu9HwQUA=

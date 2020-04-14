@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -245,7 +246,7 @@ func (m *metadataCache) getAddrs() []string {
 }
 
 // getAddr returns the broker address for the given stream partition.
-func (m *metadataCache) getAddr(stream string, partitionID int32) (string, error) {
+func (m *metadataCache) getAddr(stream string, partitionID int32, readISRReplica bool) (string, error) {
 	m.mu.RLock()
 	metadata := m.metadata
 	m.mu.RUnlock()
@@ -256,6 +257,12 @@ func (m *metadataCache) getAddr(stream string, partitionID int32) (string, error
 	partition := st.GetPartition(partitionID)
 	if partition == nil {
 		return "", errors.New("no known partition")
+	}
+	// Request to subscribe to a random ISR
+	if readISRReplica {
+		replicasISR := partition.ISR()
+		randomReplica := replicasISR[rand.Intn(len(replicasISR))]
+		return randomReplica.Addr(), nil
 	}
 	if partition.Leader() == nil {
 		return "", errors.New("no known leader for partition")

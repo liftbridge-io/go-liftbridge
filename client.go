@@ -521,6 +521,9 @@ type SubscriptionOptions struct {
 
 	// Partition sets the stream partition to consume.
 	Partition int32
+
+	// ReadISRReplica sets client's ability to subscribe from a random ISR
+	ReadISRReplica bool
 }
 
 // SubscriptionOption is a function on the SubscriptionOptions for a
@@ -571,6 +574,17 @@ func StartAtLatestReceived() SubscriptionOption {
 func StartAtEarliestReceived() SubscriptionOption {
 	return func(o *SubscriptionOptions) error {
 		o.StartPosition = StartPosition(proto.StartPosition_EARLIEST)
+		return nil
+	}
+}
+
+// ReadISRReplica sets read replica option. If true, the client will request
+// subscription from an random ISR replica instead of subscribing explicitly
+// to partition's leader. As a random ISR replica is given, it may well be the
+// partition's leader itself.
+func ReadISRReplica() SubscriptionOption {
+	return func(o *SubscriptionOptions) error {
+		o.ReadISRReplica = true
 		return nil
 	}
 }
@@ -744,7 +758,7 @@ func (c *client) subscribe(ctx context.Context, stream string,
 		err  error
 	)
 	for i := 0; i < 5; i++ {
-		pool, addr, err = c.getPoolAndAddr(stream, opts.Partition)
+		pool, addr, err = c.getPoolAndAddr(stream, opts.Partition, opts.ReadISRReplica)
 		if err != nil {
 			time.Sleep(50 * time.Millisecond)
 			c.metadata.update(ctx)
@@ -764,6 +778,7 @@ func (c *client) subscribe(ctx context.Context, stream string,
 				StartOffset:    opts.StartOffset,
 				StartTimestamp: opts.StartTimestamp.UnixNano(),
 				Partition:      opts.Partition,
+				ReadISRReplica: opts.ReadISRReplica,
 			}
 		)
 		st, err = client.Subscribe(ctx, req)
@@ -872,8 +887,8 @@ func (c *client) connFactory(addr string) connFactory {
 
 // getPoolAndAddr returns the connPool and broker address for the given
 // partition.
-func (c *client) getPoolAndAddr(stream string, partition int32) (*connPool, string, error) {
-	addr, err := c.metadata.getAddr(stream, partition)
+func (c *client) getPoolAndAddr(stream string, partition int32, readISRReplica bool) (*connPool, string, error) {
+	addr, err := c.metadata.getAddr(stream, partition, readISRReplica)
 	if err != nil {
 		return nil, "", err
 	}
