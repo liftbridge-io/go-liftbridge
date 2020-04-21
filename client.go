@@ -662,7 +662,15 @@ func (c *client) Publish(ctx context.Context, stream string, value []byte,
 		AckPolicy:     opts.AckPolicy.toProto(),
 	}
 
-	return c.publish(ctx, req)
+	var ack *proto.Ack
+	err = c.doResilientRPC(func(client proto.APIClient) error {
+		resp, err := client.Publish(ctx, req)
+		if err == nil {
+			ack = resp.Ack
+		}
+		return err
+	})
+	return newProtoAck(ack), err
 }
 
 // PublishToSubject publishes a new message to the NATS subject. Note that
@@ -684,7 +692,7 @@ func (c *client) PublishToSubject(ctx context.Context, subject string, value []b
 		opt(opts)
 	}
 
-	req := &proto.PublishRequest{
+	req := &proto.PublishToSubjectRequest{
 		Subject:       subject,
 		Key:           opts.Key,
 		Value:         value,
@@ -693,25 +701,21 @@ func (c *client) PublishToSubject(ctx context.Context, subject string, value []b
 		AckPolicy:     opts.AckPolicy.toProto(),
 	}
 
-	return c.publish(ctx, req)
-}
-
-// FetchMetadata returns cluster metadata including broker and stream
-// information.
-func (c *client) FetchMetadata(ctx context.Context) (*Metadata, error) {
-	return c.metadata.update(ctx)
-}
-
-func (c *client) publish(ctx context.Context, req *proto.PublishRequest) (Ack, error) {
 	var ack *proto.Ack
 	err := c.doResilientRPC(func(client proto.APIClient) error {
-		resp, err := client.Publish(ctx, req)
+		resp, err := client.PublishToSubject(ctx, req)
 		if err == nil {
 			ack = resp.Ack
 		}
 		return err
 	})
 	return newProtoAck(ack), err
+}
+
+// FetchMetadata returns cluster metadata including broker and stream
+// information.
+func (c *client) FetchMetadata(ctx context.Context) (*Metadata, error) {
+	return c.metadata.update(ctx)
 }
 
 // partition determines the partition ID to publish the message to. If a
