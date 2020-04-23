@@ -3,68 +3,16 @@ package liftbridge
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"testing"
 	"time"
 
-	natsdTest "github.com/nats-io/nats-server/test"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	proto "github.com/liftbridge-io/liftbridge-api/go"
-	"github.com/liftbridge-io/liftbridge/server"
 )
-
-type message struct {
-	Key    []byte
-	Value  []byte
-	Offset int64
-}
-
-func assertMsg(t *testing.T, expected *message, msg Message) {
-	require.Equal(t, expected.Offset, msg.Offset())
-	require.Equal(t, expected.Key, msg.Key())
-	require.Equal(t, expected.Value, msg.Value())
-}
-
-func getPartitionLeader(t *testing.T, timeout time.Duration, name string, partitionID int32,
-	client *client, servers map[*server.Config]*server.Server) (*server.Server, *server.Config) {
-	var (
-		leaderID string
-		deadline = time.Now().Add(timeout)
-	)
-	for time.Now().Before(deadline) {
-		metadata, err := client.FetchMetadata(context.Background())
-		require.NoError(t, err)
-		stream := metadata.GetStream(name)
-		if stream == nil {
-			time.Sleep(15 * time.Millisecond)
-			continue
-		}
-		partition := stream.GetPartition(partitionID)
-		if partition == nil {
-			time.Sleep(15 * time.Millisecond)
-			continue
-		}
-		leader := partition.Leader()
-		if leader == nil {
-			time.Sleep(15 * time.Millisecond)
-			continue
-		}
-		leaderID = leader.ID()
-		if leaderID == "" {
-			time.Sleep(15 * time.Millisecond)
-			continue
-		}
-		for config, s := range servers {
-			if config.Clustering.ServerID == leaderID {
-				return s, config
-			}
-		}
-		time.Sleep(15 * time.Millisecond)
-	}
-	return nil, nil
-}
 
 func TestUnmarshalAck(t *testing.T) {
 	ack := &proto.Ack{
@@ -155,644 +103,975 @@ func TestConnectNoAddrs(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestCreateStream(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	server.SetupMockCreateStreamError(status.Error(codes.AlreadyExists, "stream already exists"))
+
+	err = client.CreateStream(context.Background(), "foo", "bar", ReplicationFactor(2))
+	require.Equal(t, ErrStreamExists, err)
+	req := server.GetCreateStreamRequests()[0]
+	require.Equal(t, "bar", req.Name)
+	require.Equal(t, "foo", req.Subject)
+	require.Equal(t, "", req.Group)
+	require.Equal(t, int32(2), req.ReplicationFactor)
+	require.Equal(t, int32(0), req.Partitions)
+
+	server.SetupMockResponse(new(proto.CreateStreamResponse))
+
+	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar",
+		Group("group"), MaxReplication(), Partitions(3)))
+	req = server.GetCreateStreamRequests()[1]
+	require.Equal(t, "bar", req.Name)
+	require.Equal(t, "foo", req.Subject)
+	require.Equal(t, "group", req.Group)
+	require.Equal(t, int32(-1), req.ReplicationFactor)
+	require.Equal(t, int32(3), req.Partitions)
+
+	err = client.CreateStream(context.Background(), "foo", "bar", Partitions(-1))
+	require.Error(t, err)
+}
+
 func TestDeleteStream(t *testing.T) {
-	defer cleanupStorage(t)
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
 
-	// Use a central NATS server.
-	ns := natsdTest.RunDefaultServer()
-	defer ns.Shutdown()
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
 
-	config := getTestConfig("a", true, 5050)
-	s := runServerWithConfig(t, config)
-	defer s.Stop()
-
-	client, err := Connect([]string{"localhost:5050"})
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
 	defer client.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	err = client.DeleteStream(ctx, "foo")
+	server.SetupMockDeleteStreamError(status.Error(codes.NotFound, "stream not found"))
+
+	err = client.DeleteStream(context.Background(), "foo")
 	require.Equal(t, ErrNoSuchStream, err)
+	require.Equal(t, "foo", server.GetDeleteStreamRequests()[0].Name)
 
-	require.NoError(t, client.CreateStream(context.Background(), "foo", "foo"))
+	server.SetupMockResponse(new(proto.DeleteStreamResponse))
 
-	metadata, err := client.FetchMetadata(context.Background())
-	require.NoError(t, err)
-	require.NotNil(t, metadata.GetStream("foo"))
-
-	require.NoError(t, client.DeleteStream(ctx, "foo"))
-
-	metadata, err = client.FetchMetadata(context.Background())
-	require.NoError(t, err)
-	require.Nil(t, metadata.GetStream("foo"))
+	require.NoError(t, client.DeleteStream(context.Background(), "foo"))
+	require.Equal(t, "foo", server.GetDeleteStreamRequests()[1].Name)
 }
 
-func TestClientSubscribe(t *testing.T) {
-	defer cleanupStorage(t)
+func TestPauseStream(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
 
-	// Use a central NATS server.
-	ns := natsdTest.RunDefaultServer()
-	defer ns.Shutdown()
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
 
-	config := getTestConfig("a", true, 5050)
-	s := runServerWithConfig(t, config)
-	defer s.Stop()
-
-	client, err := Connect([]string{"localhost:5050"})
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
 	defer client.Close()
 
-	// Wait for server to elect itself leader.
-	getMetadataLeader(t, 10*time.Second, s)
+	server.SetupMockPauseStreamError(status.Error(codes.NotFound, "stream not found"))
 
-	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
+	err = client.PauseStream(context.Background(), "foo")
+	require.Equal(t, ErrNoSuchPartition, err)
+	req := server.GetPauseStreamRequests()[0]
+	require.Equal(t, "foo", req.Name)
+	require.Equal(t, []int32(nil), req.Partitions)
+	require.False(t, req.ResumeAll)
 
-	count := 5
-	expected := make([]*message, count)
-	for i := 0; i < count; i++ {
-		expected[i] = &message{
-			Key:    []byte("test"),
-			Value:  []byte(strconv.Itoa(i)),
-			Offset: int64(i),
-		}
-	}
+	server.SetupMockResponse(new(proto.PauseStreamResponse))
 
-	for i := 0; i < count; i++ {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_, err := client.Publish(ctx, "bar", expected[i].Value, Key(expected[i].Key))
-		require.NoError(t, err)
-	}
-
-	// Subscribe from the beginning.
-	recv := 0
-	ch1 := make(chan struct{})
-	ch2 := make(chan struct{})
-	err = client.Subscribe(context.Background(), "bar", func(msg Message, err error) {
-		require.NoError(t, err)
-		expect := expected[recv]
-		assertMsg(t, expect, msg)
-		recv++
-		if recv == count {
-			close(ch1)
-			return
-		}
-		if recv == 2*count {
-			close(ch2)
-			return
-		}
-	}, StartAtEarliestReceived())
-	require.NoError(t, err)
-
-	// Wait to read back publishes messages.
-	select {
-	case <-ch1:
-	case <-time.After(10 * time.Second):
-		t.Fatal("Did not receive all expected messages")
-	}
-
-	// Publish some more.
-	for i := 0; i < count; i++ {
-		expected = append(expected, &message{
-			Key:    []byte("blah"),
-			Value:  []byte(strconv.Itoa(i + count)),
-			Offset: int64(i + count),
-		})
-	}
-
-	for i := 0; i < count; i++ {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_, err := client.Publish(ctx, "bar", expected[i+count].Value,
-			Key(expected[i+count].Key))
-		require.NoError(t, err)
-	}
-
-	// Wait to read the new messages.
-	select {
-	case <-ch2:
-	case <-time.After(10 * time.Second):
-		t.Fatal("Did not receive all expected messages")
-	}
+	require.NoError(t, client.PauseStream(context.Background(), "foo",
+		PausePartitions(0, 1), ResumeAll()))
+	req = server.GetPauseStreamRequests()[1]
+	require.Equal(t, "foo", req.Name)
+	require.Equal(t, []int32{0, 1}, req.Partitions)
+	require.True(t, req.ResumeAll)
 }
 
-// Ensure an error isn't returned on the stream when the client is closed.
-func TestClientCloseNoError(t *testing.T) {
-	defer cleanupStorage(t)
+func TestSubscribe(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
 
-	// Use a central NATS server.
-	ns := natsdTest.RunDefaultServer()
-	defer ns.Shutdown()
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
 
-	config := getTestConfig("a", true, 5050)
-	s := runServerWithConfig(t, config)
-	defer s.Stop()
-
-	client, err := Connect([]string{"localhost:5050"})
-	require.NoError(t, err)
-
-	// Wait for server to elect itself leader.
-	getMetadataLeader(t, 10*time.Second, s)
-
-	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
-
-	err = client.Subscribe(context.Background(), "bar", func(msg Message, err error) {
-		require.NoError(t, err)
-	})
-	require.NoError(t, err)
-	client.Close()
-}
-
-// Ensure an error is returned on the stream when the client is disconnected
-// and reconnect is disabled.
-func TestClientDisconnectError(t *testing.T) {
-	defer cleanupStorage(t)
-
-	// Use a central NATS server.
-	ns := natsdTest.RunDefaultServer()
-	defer ns.Shutdown()
-
-	config := getTestConfig("a", true, 5050)
-	s := runServerWithConfig(t, config)
-	defer s.Stop()
-
-	client, err := Connect([]string{"localhost:5050"}, ResubscribeWaitTime(0))
-	require.NoError(t, err)
-
-	// Wait for server to elect itself leader.
-	getMetadataLeader(t, 10*time.Second, s)
-
-	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
-
-	ch := make(chan error)
-	err = client.Subscribe(context.Background(), "bar", func(msg Message, err error) {
-		ch <- err
-	})
-
-	s.Stop()
-
-	select {
-	case err := <-ch:
-		require.Error(t, err)
-	case <-time.After(10 * time.Second):
-		t.Fatal("Did not receive expected error")
-	}
-}
-
-// Ensure if the the stream leader for a subscription fails and the client is
-// unable to re-establish the subscription, an error is returned on it.
-func TestClientResubscribeFail(t *testing.T) {
-	defer cleanupStorage(t)
-
-	// Use a central NATS server.
-	ns := natsdTest.RunDefaultServer()
-	defer ns.Shutdown()
-
-	config := getTestConfig("a", true, 5050)
-	s := runServerWithConfig(t, config)
-	defer s.Stop()
-
-	client, err := Connect([]string{"localhost:5050"}, ResubscribeWaitTime(time.Millisecond))
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
 	defer client.Close()
 
-	// Wait for server to elect itself leader.
-	getMetadataLeader(t, 10*time.Second, s)
-
-	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
-
-	ch := make(chan error)
-	err = client.Subscribe(context.Background(), "bar", func(msg Message, err error) {
-		ch <- err
-	})
-	require.NoError(t, err)
-
-	s.Stop()
-
-	select {
-	case err := <-ch:
-		require.Error(t, err)
-	case <-time.After(10 * time.Second):
-		t.Fatal("Did not receive expected error")
+	metadataResp := &proto.FetchMetadataResponse{
+		Brokers: []*proto.Broker{{
+			Id:   "a",
+			Host: "localhost",
+			Port: int32(port),
+		}},
+		Metadata: []*proto.StreamMetadata{{
+			Name:    "foo",
+			Subject: "foo",
+			Partitions: map[int32]*proto.PartitionMetadata{
+				0: {
+					Id:       0,
+					Leader:   "a",
+					Replicas: []string{"a"},
+					Isr:      []string{"a"},
+				},
+			},
+		}},
 	}
-}
-
-// Ensure messages sent with the publish API are received on a stream and an
-// ack is received when an AckPolicy and timeout are configured.
-func TestClientPublishAck(t *testing.T) {
-	defer cleanupStorage(t)
-
-	// Use a central NATS server.
-	ns := natsdTest.RunDefaultServer()
-	defer ns.Shutdown()
-
-	config := getTestConfig("a", true, 5050)
-	s := runServerWithConfig(t, config)
-	defer s.Stop()
-
-	client, err := Connect([]string{"localhost:5050"})
-	require.NoError(t, err)
-	defer client.Close()
-
-	// Wait for server to elect itself leader.
-	getMetadataLeader(t, 10*time.Second, s)
-
-	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
-
-	count := 5
-	expected := make([]*message, count)
-	for i := 0; i < count; i++ {
-		expected[i] = &message{
-			Key:    []byte("test"),
-			Value:  []byte(strconv.Itoa(i)),
-			Offset: int64(i),
-		}
+	server.SetupMockResponse(metadataResp)
+	timestamp := time.Now().UnixNano()
+	messages := []*proto.Message{
+		{
+			Offset:        0,
+			Key:           []byte("key"),
+			Value:         []byte("value"),
+			Timestamp:     timestamp,
+			Stream:        "foo",
+			Partition:     0,
+			Subject:       "foo",
+			Headers:       map[string][]byte{"foo": []byte("bar")},
+			AckInbox:      "ack",
+			CorrelationId: "123",
+			AckPolicy:     proto.AckPolicy_ALL,
+		},
 	}
+	server.SetupMockSubscribeMessages(messages)
 
-	for i := 0; i < count; i++ {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		ack, err := client.Publish(ctx, "bar", expected[i].Value,
-			Key(expected[i].Key), AckPolicyLeader())
-		require.NoError(t, err)
-		require.NotNil(t, ack)
-		require.Equal(t, "bar", ack.Stream())
-	}
-
-	// Subscribe from the beginning.
-	recv := 0
-	ch := make(chan struct{})
-	err = client.Subscribe(context.Background(), "bar", func(msg Message, err error) {
-		require.NoError(t, err)
-		expect := expected[recv]
-		assertMsg(t, expect, msg)
-		recv++
-		if recv == count {
-			close(ch)
-			return
-		}
-	}, StartAtEarliestReceived())
-	require.NoError(t, err)
-
-	// Wait to read back published messages.
-	select {
-	case <-ch:
-	case <-time.After(10 * time.Second):
-		t.Fatal("Did not receive all expected messages")
-	}
-}
-
-// Ensure messages sent with the publish API are received on a stream and a nil
-// ack is returned when no AckPolicy is configured.
-func TestClientPublishNoAck(t *testing.T) {
-	defer cleanupStorage(t)
-
-	// Use a central NATS server.
-	ns := natsdTest.RunDefaultServer()
-	defer ns.Shutdown()
-
-	config := getTestConfig("a", true, 5050)
-	s := runServerWithConfig(t, config)
-	defer s.Stop()
-
-	client, err := Connect([]string{"localhost:5050"})
-	require.NoError(t, err)
-	defer client.Close()
-
-	// Wait for server to elect itself leader.
-	getMetadataLeader(t, 10*time.Second, s)
-
-	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
-
-	count := 5
-	expected := make([]*message, count)
-	for i := 0; i < count; i++ {
-		expected[i] = &message{
-			Key:    []byte("test"),
-			Value:  []byte(strconv.Itoa(i)),
-			Offset: int64(i),
-		}
-	}
-
-	for i := 0; i < count; i++ {
-		ack, err := client.Publish(context.Background(), "bar", expected[i].Value,
-			Key(expected[i].Key))
-		require.NoError(t, err)
-		require.Nil(t, ack)
-	}
-
-	// Subscribe from the beginning.
-	recv := 0
-	ch := make(chan struct{})
-	err = client.Subscribe(context.Background(), "bar", func(msg Message, err error) {
-		require.NoError(t, err)
-		expect := expected[recv]
-		assertMsg(t, expect, msg)
-		recv++
-		if recv == count {
-			close(ch)
-			return
-		}
-	}, StartAtEarliestReceived())
-	require.NoError(t, err)
-
-	// Wait to read back published messages.
-	select {
-	case <-ch:
-	case <-time.After(10 * time.Second):
-		t.Fatal("Did not receive all expected messages")
-	}
-}
-
-// Ensure headers are set correctly on messages.
-func TestClientPublishHeaders(t *testing.T) {
-	defer cleanupStorage(t)
-
-	// Use a central NATS server.
-	ns := natsdTest.RunDefaultServer()
-	defer ns.Shutdown()
-
-	config := getTestConfig("a", true, 5050)
-	s := runServerWithConfig(t, config)
-	defer s.Stop()
-
-	client, err := Connect([]string{"localhost:5050"})
-	require.NoError(t, err)
-	defer client.Close()
-
-	// Wait for server to elect itself leader.
-	getMetadataLeader(t, 10*time.Second, s)
-
-	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar"))
-
-	ack, err := client.Publish(context.Background(), "bar",
-		[]byte("hello"),
-		Header("a", []byte("header")),
-		Headers(map[string][]byte{"some": []byte("more")}))
-	require.NoError(t, err)
-	require.Nil(t, ack)
-
-	// Subscribe from the beginning.
 	ch := make(chan Message)
-	err = client.Subscribe(context.Background(), "bar", func(msg Message, err error) {
+	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {
+		require.NoError(t, err)
+		ch <- msg
+	})
+	require.NoError(t, err)
+
+	select {
+	case msg := <-ch:
+		require.Equal(t, int64(0), msg.Offset())
+		require.Equal(t, []byte("key"), msg.Key())
+		require.Equal(t, []byte("value"), msg.Value())
+		require.Equal(t, time.Unix(0, timestamp), msg.Timestamp())
+		require.Equal(t, "foo", msg.Subject())
+		require.Equal(t, map[string][]byte{"foo": []byte("bar")}, msg.Headers())
+		require.Equal(t, "ack", msg.AckInbox())
+		require.Equal(t, "123", msg.CorrelationID())
+		require.Equal(t, AckPolicy(1), msg.AckPolicy())
+	case <-time.After(2 * time.Second):
+		t.Fatal("Did not receive expected message")
+	}
+
+	req := server.GetSubscribeRequests()[0]
+	require.Equal(t, "foo", req.Stream)
+	require.Equal(t, int32(0), req.Partition)
+	require.Equal(t, proto.StartPosition_NEW_ONLY, req.StartPosition)
+	require.False(t, req.ReadISRReplica)
+}
+
+func TestSubscribeNoKnownPartition(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	metadataResp := &proto.FetchMetadataResponse{
+		Brokers: []*proto.Broker{{
+			Id:   "a",
+			Host: "localhost",
+			Port: int32(port),
+		}},
+		Metadata: []*proto.StreamMetadata{{
+			Name:    "foo",
+			Subject: "foo",
+			Partitions: map[int32]*proto.PartitionMetadata{
+				0: {
+					Id:       0,
+					Leader:   "a",
+					Replicas: []string{"a"},
+					Isr:      []string{"a"},
+				},
+			},
+		}},
+	}
+	server.SetupMockResponse(metadataResp, metadataResp, metadataResp, metadataResp, metadataResp)
+
+	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {}, Partition(1))
+	require.Error(t, err)
+	require.Equal(t, "no known partition", err.Error())
+
+	require.Len(t, server.GetSubscribeRequests(), 0)
+}
+
+func TestSubscribeNoPartition(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	metadataResp := &proto.FetchMetadataResponse{
+		Brokers: []*proto.Broker{{
+			Id:   "a",
+			Host: "localhost",
+			Port: int32(port),
+		}},
+		Metadata: []*proto.StreamMetadata{{
+			Name:    "foo",
+			Subject: "foo",
+			Partitions: map[int32]*proto.PartitionMetadata{
+				0: {
+					Id:       0,
+					Leader:   "a",
+					Replicas: []string{"a"},
+					Isr:      []string{"a"},
+				},
+			},
+		}},
+	}
+	server.SetupMockResponse(metadataResp, metadataResp, metadataResp, metadataResp, metadataResp)
+	server.SetupMockSubscribeError(status.Error(codes.NotFound, "No such partition"))
+
+	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {},
+		StartAtOffset(3), ReadISRReplica())
+	require.Equal(t, ErrNoSuchPartition, err)
+
+	req := server.GetSubscribeRequests()[0]
+	require.Equal(t, "foo", req.Stream)
+	require.Equal(t, int32(0), req.Partition)
+	require.Equal(t, proto.StartPosition_OFFSET, req.StartPosition)
+	require.Equal(t, int64(3), req.StartOffset)
+	require.True(t, req.ReadISRReplica)
+}
+
+func TestSubscribeNoKnownStream(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	metadataResp := &proto.FetchMetadataResponse{
+		Brokers: []*proto.Broker{{
+			Id:   "a",
+			Host: "localhost",
+			Port: int32(port),
+		}},
+		Metadata: []*proto.StreamMetadata{},
+	}
+	server.SetupMockResponse(metadataResp, metadataResp, metadataResp, metadataResp, metadataResp)
+
+	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {})
+	require.Error(t, err)
+	require.Equal(t, "no known stream", err.Error())
+
+	require.Len(t, server.GetSubscribeRequests(), 0)
+}
+
+func TestSubscribeNoLeader(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	metadataResp := &proto.FetchMetadataResponse{
+		Brokers: []*proto.Broker{{
+			Id:   "a",
+			Host: "localhost",
+			Port: int32(port),
+		}},
+		Metadata: []*proto.StreamMetadata{{
+			Name:    "foo",
+			Subject: "foo",
+			Partitions: map[int32]*proto.PartitionMetadata{
+				0: {
+					Id:       0,
+					Replicas: []string{"a"},
+				},
+			},
+		}},
+	}
+	server.SetupMockResponse(metadataResp, metadataResp, metadataResp, metadataResp, metadataResp)
+
+	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {})
+	require.Error(t, err)
+	require.Equal(t, "no known leader for partition", err.Error())
+
+	require.Len(t, server.GetSubscribeRequests(), 0)
+}
+
+func TestSubscribeNotLeaderRetry(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	metadataResp := &proto.FetchMetadataResponse{
+		Brokers: []*proto.Broker{{
+			Id:   "a",
+			Host: "localhost",
+			Port: int32(port),
+		}},
+		Metadata: []*proto.StreamMetadata{{
+			Name:    "foo",
+			Subject: "foo",
+			Partitions: map[int32]*proto.PartitionMetadata{
+				0: {
+					Id:       0,
+					Leader:   "a",
+					Replicas: []string{"a"},
+					Isr:      []string{"a"},
+				},
+			},
+		}},
+	}
+	server.SetupMockResponse(metadataResp, metadataResp)
+	timestamp := time.Now().UnixNano()
+	messages := []*proto.Message{
+		{
+			Offset:        0,
+			Key:           []byte("key"),
+			Value:         []byte("value"),
+			Timestamp:     timestamp,
+			Stream:        "foo",
+			Partition:     0,
+			Subject:       "foo",
+			Headers:       map[string][]byte{"foo": []byte("bar")},
+			AckInbox:      "ack",
+			CorrelationId: "123",
+			AckPolicy:     proto.AckPolicy_ALL,
+		},
+	}
+
+	server.SetupMockSubscribeError(status.Error(codes.FailedPrecondition, "not leader"))
+	server.SetupMockSubscribeMessages(messages)
+
+	ch := make(chan Message)
+	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {
 		require.NoError(t, err)
 		ch <- msg
 	}, StartAtEarliestReceived())
 	require.NoError(t, err)
 
-	// Wait to read back published messages.
 	select {
 	case msg := <-ch:
-		require.Len(t, msg.Headers(), 2)
-		for name, value := range msg.Headers() {
-			if name == "a" {
-				require.Equal(t, []byte("header"), value)
-			}
-			if name == "some" {
-				require.Equal(t, []byte("more"), value)
-			}
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("Did not receive all expected messages")
+		require.Equal(t, int64(0), msg.Offset())
+		require.Equal(t, []byte("key"), msg.Key())
+		require.Equal(t, []byte("value"), msg.Value())
+		require.Equal(t, time.Unix(0, timestamp), msg.Timestamp())
+		require.Equal(t, "foo", msg.Subject())
+		require.Equal(t, map[string][]byte{"foo": []byte("bar")}, msg.Headers())
+		require.Equal(t, "ack", msg.AckInbox())
+		require.Equal(t, "123", msg.CorrelationID())
+		require.Equal(t, AckPolicy(1), msg.AckPolicy())
+	case <-time.After(2 * time.Second):
+		t.Fatal("Did not receive expected message")
 	}
+
+	req := server.GetSubscribeRequests()[0]
+	require.Equal(t, "foo", req.Stream)
+	require.Equal(t, int32(0), req.Partition)
+	require.Equal(t, proto.StartPosition_EARLIEST, req.StartPosition)
+	require.False(t, req.ReadISRReplica)
 }
 
-// Ensure when partitions are specified the stream has the correct number of
-// partitions.
-func TestPartitioning(t *testing.T) {
-	defer cleanupStorage(t)
+func TestSubscribeResubscribe(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
 
-	// Use a central NATS server.
-	ns := natsdTest.RunDefaultServer()
-	defer ns.Shutdown()
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
 
-	config := getTestConfig("a", true, 5050)
-	s := runServerWithConfig(t, config)
-	defer s.Stop()
-
-	conn, err := Connect([]string{"localhost:5050"})
-	require.NoError(t, err)
-	defer conn.Close()
-
-	// Wait for server to elect itself leader.
-	getMetadataLeader(t, 10*time.Second, s)
-
-	require.NoError(t, conn.CreateStream(context.Background(), "foo", "bar", Partitions(3)))
-
-	metadata, err := conn.FetchMetadata(context.Background())
-	require.NoError(t, err)
-	stream := metadata.GetStream("bar")
-	require.NotNil(t, stream)
-	require.Len(t, stream.Partitions(), 3)
-}
-
-// Ensure ToPartition publishes a message to the given partition and Subscribe
-// reads from the correct partition.
-func TestPublishToPartition(t *testing.T) {
-	defer cleanupStorage(t)
-
-	// Use a central NATS server.
-	ns := natsdTest.RunDefaultServer()
-	defer ns.Shutdown()
-
-	config := getTestConfig("a", true, 5050)
-	s := runServerWithConfig(t, config)
-	defer s.Stop()
-
-	client, err := Connect([]string{"localhost:5050"})
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
 	defer client.Close()
 
-	// Wait for server to elect itself leader.
-	getMetadataLeader(t, 10*time.Second, s)
+	metadataResp := &proto.FetchMetadataResponse{
+		Brokers: []*proto.Broker{{
+			Id:   "a",
+			Host: "localhost",
+			Port: int32(port),
+		}},
+		Metadata: []*proto.StreamMetadata{{
+			Name:    "foo",
+			Subject: "foo",
+			Partitions: map[int32]*proto.PartitionMetadata{
+				0: {
+					Id:       0,
+					Leader:   "a",
+					Replicas: []string{"a"},
+					Isr:      []string{"a"},
+				},
+			},
+		}},
+	}
+	server.SetupMockResponse(metadataResp, metadataResp)
+	timestamp := time.Now().UnixNano()
+	messages := []*proto.Message{
+		{
+			Offset:        0,
+			Key:           []byte("key"),
+			Value:         []byte("value"),
+			Timestamp:     timestamp,
+			Stream:        "foo",
+			Partition:     0,
+			Subject:       "foo",
+			Headers:       map[string][]byte{"foo": []byte("bar")},
+			AckInbox:      "ack",
+			CorrelationId: "123",
+			AckPolicy:     proto.AckPolicy_ALL,
+		},
+	}
 
-	var (
-		subject = "foo"
-		name    = "bar"
-	)
-	require.NoError(t, client.CreateStream(context.Background(), subject, name, Partitions(3)))
+	server.SetupMockSubscribeAsyncError(status.Error(codes.Unavailable, "temporarily unavailable"))
+	server.SetupMockSubscribeMessages(messages)
 
-	_, err = client.Publish(context.Background(), name, []byte("hello"), ToPartition(1))
-	require.NoError(t, err)
-
-	recv := make(chan Message)
-	err = client.Subscribe(context.Background(), name, func(msg Message, err error) {
+	ch := make(chan Message)
+	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {
 		require.NoError(t, err)
-		recv <- msg
-	}, Partition(1), StartAtEarliestReceived())
+		ch <- msg
+	}, StartAtTimeDelta(time.Minute))
 	require.NoError(t, err)
 
 	select {
-	case msg := <-recv:
-		require.Equal(t, []byte("hello"), msg.Value())
-	case <-time.After(5 * time.Second):
-		require.Fail(t, "Did not receive expected message")
+	case msg := <-ch:
+		require.Equal(t, int64(0), msg.Offset())
+		require.Equal(t, []byte("key"), msg.Key())
+		require.Equal(t, []byte("value"), msg.Value())
+		require.Equal(t, time.Unix(0, timestamp), msg.Timestamp())
+		require.Equal(t, "foo", msg.Subject())
+		require.Equal(t, map[string][]byte{"foo": []byte("bar")}, msg.Headers())
+		require.Equal(t, "ack", msg.AckInbox())
+		require.Equal(t, "123", msg.CorrelationID())
+		require.Equal(t, AckPolicy(1), msg.AckPolicy())
+	case <-time.After(2 * time.Second):
+		t.Fatal("Did not receive expected message")
 	}
+
+	req := server.GetSubscribeRequests()[0]
+	require.Equal(t, "foo", req.Stream)
+	require.Equal(t, int32(0), req.Partition)
+	require.Equal(t, proto.StartPosition_TIMESTAMP, req.StartPosition)
+	require.False(t, req.ReadISRReplica)
 }
 
-// Ensure PartitionByRoundRobin publishes messages evenly across partitions.
-func TestPublishPartitionByRoundRobin(t *testing.T) {
-	defer cleanupStorage(t)
+func TestSubscribeStreamDeleted(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
 
-	// Use a central NATS server.
-	ns := natsdTest.RunDefaultServer()
-	defer ns.Shutdown()
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
 
-	config := getTestConfig("a", true, 5050)
-	s := runServerWithConfig(t, config)
-	defer s.Stop()
-
-	client, err := Connect([]string{"localhost:5050"})
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
 	defer client.Close()
 
-	// Wait for server to elect itself leader.
-	getMetadataLeader(t, 10*time.Second, s)
+	metadataResp := &proto.FetchMetadataResponse{
+		Brokers: []*proto.Broker{{
+			Id:   "a",
+			Host: "localhost",
+			Port: int32(port),
+		}},
+		Metadata: []*proto.StreamMetadata{{
+			Name:    "foo",
+			Subject: "foo",
+			Partitions: map[int32]*proto.PartitionMetadata{
+				0: {
+					Id:       0,
+					Leader:   "a",
+					Replicas: []string{"a"},
+					Isr:      []string{"a"},
+				},
+			},
+		}},
+	}
+	server.SetupMockResponse(metadataResp, metadataResp)
 
-	var (
-		subject = "foo"
-		name    = "bar"
-	)
-	require.NoError(t, client.CreateStream(context.Background(), subject, name, Partitions(3)))
+	server.SetupMockSubscribeAsyncError(status.Error(codes.NotFound, "stream deleted"))
 
-	for i := 0; i < 3; i++ {
-		_, err = client.Publish(context.Background(), name, []byte(strconv.Itoa(i)), PartitionByRoundRobin())
-		require.NoError(t, err)
+	timestamp := time.Now()
+	ch := make(chan error)
+	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {
+		ch <- err
+	}, StartAtTime(timestamp))
+	require.NoError(t, err)
+
+	select {
+	case err := <-ch:
+		require.Equal(t, ErrStreamDeleted, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Did not receive expected message")
 	}
 
-	for i := 0; i < 3; i++ {
-		recv := make(chan Message)
-		err = client.Subscribe(context.Background(), name, func(msg Message, err error) {
-			require.NoError(t, err)
-			recv <- msg
-		}, Partition(int32(i)), StartAtEarliestReceived())
-		require.NoError(t, err)
-
-		select {
-		case msg := <-recv:
-			require.Equal(t, []byte(strconv.Itoa(i)), msg.Value())
-		case <-time.After(5 * time.Second):
-			require.Fail(t, "Did not receive expected message")
-		}
-	}
+	req := server.GetSubscribeRequests()[0]
+	require.Equal(t, "foo", req.Stream)
+	require.Equal(t, int32(0), req.Partition)
+	require.Equal(t, proto.StartPosition_TIMESTAMP, req.StartPosition)
+	require.Equal(t, timestamp.UnixNano(), req.StartTimestamp)
+	require.False(t, req.ReadISRReplica)
 }
 
-// Ensure PartitionByKey publishes messages to partitions based on a hash of
-// the message key.
-func TestPublishPartitionByKey(t *testing.T) {
-	defer cleanupStorage(t)
-	oldHasher := hasher
-	defer func() {
-		hasher = oldHasher
+func TestSubscribeServerUnavailableRetry(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	metadataResp := &proto.FetchMetadataResponse{
+		Brokers: []*proto.Broker{{
+			Id:   "a",
+			Host: "localhost",
+			Port: int32(port),
+		}},
+		Metadata: []*proto.StreamMetadata{{
+			Name:    "foo",
+			Subject: "foo",
+			Partitions: map[int32]*proto.PartitionMetadata{
+				0: {
+					Id:       0,
+					Leader:   "a",
+					Replicas: []string{"a"},
+					Isr:      []string{"a"},
+				},
+			},
+		}},
+	}
+	server.SetupMockResponse(metadataResp, metadataResp)
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	server.Stop(t)
+	server = newMockServer()
+	defer server.Stop(t)
+	server.SetupMockResponse(metadataResp, metadataResp)
+	timestamp := time.Now().UnixNano()
+	messages := []*proto.Message{
+		{
+			Offset:        0,
+			Key:           []byte("key"),
+			Value:         []byte("value"),
+			Timestamp:     timestamp,
+			Stream:        "foo",
+			Partition:     0,
+			Subject:       "foo",
+			Headers:       map[string][]byte{"foo": []byte("bar")},
+			AckInbox:      "ack",
+			CorrelationId: "123",
+			AckPolicy:     proto.AckPolicy_ALL,
+		},
+	}
+
+	server.SetupMockSubscribeAsyncError(status.Error(codes.Unavailable, "temporarily unavailable"))
+	server.SetupMockSubscribeMessages(messages)
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		server.StartOnPort(t, port)
 	}()
-	hash := uint32(0)
-	hasher = func(data []byte) uint32 {
-		ret := hash
-		hash++
-		return ret
+
+	ch := make(chan Message)
+	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {
+		require.NoError(t, err)
+		ch <- msg
+	}, StartAtLatestReceived())
+	require.NoError(t, err)
+
+	select {
+	case msg := <-ch:
+		require.Equal(t, int64(0), msg.Offset())
+		require.Equal(t, []byte("key"), msg.Key())
+		require.Equal(t, []byte("value"), msg.Value())
+		require.Equal(t, time.Unix(0, timestamp), msg.Timestamp())
+		require.Equal(t, "foo", msg.Subject())
+		require.Equal(t, map[string][]byte{"foo": []byte("bar")}, msg.Headers())
+		require.Equal(t, "ack", msg.AckInbox())
+		require.Equal(t, "123", msg.CorrelationID())
+		require.Equal(t, AckPolicy(1), msg.AckPolicy())
+	case <-time.After(2 * time.Second):
+		t.Fatal("Did not receive expected message")
 	}
 
-	// Use a central NATS server.
-	ns := natsdTest.RunDefaultServer()
-	defer ns.Shutdown()
+	req := server.GetSubscribeRequests()[0]
+	require.Equal(t, "foo", req.Stream)
+	require.Equal(t, int32(0), req.Partition)
+	require.Equal(t, proto.StartPosition_LATEST, req.StartPosition)
+	require.False(t, req.ReadISRReplica)
+}
 
-	config := getTestConfig("a", true, 5050)
-	s := runServerWithConfig(t, config)
-	defer s.Stop()
+func TestSubscribeInvalidPartition(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
 
-	client, err := Connect([]string{"localhost:5050"})
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
 	defer client.Close()
 
-	// Wait for server to elect itself leader.
-	getMetadataLeader(t, 10*time.Second, s)
+	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {}, Partition(-1))
+	require.Error(t, err)
 
-	var (
-		subject = "foo"
-		name    = "bar"
-	)
-	require.NoError(t, client.CreateStream(context.Background(), subject, name, Partitions(3)))
+	require.Len(t, server.GetSubscribeRequests(), 0)
+}
 
-	for i := 0; i < 3; i++ {
-		_, err = client.Publish(context.Background(), name, []byte(strconv.Itoa(i)),
-			Key([]byte(strconv.Itoa(i))),
-			PartitionByKey(),
-		)
-		require.NoError(t, err)
+func TestPublish(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	expectedAck := &proto.Ack{
+		Stream:           "foo",
+		PartitionSubject: "foo",
+		MsgSubject:       "foo",
+		Offset:           0,
+		AckInbox:         "ack",
+		CorrelationId:    "123",
+		AckPolicy:        proto.AckPolicy_LEADER,
 	}
 
-	msgs := map[string]struct{}{
-		"0": {},
-		"1": {},
-		"2": {},
+	server.SetupMockResponse(&proto.PublishResponse{Ack: expectedAck})
+
+	ack, err := client.Publish(context.Background(), "foo", []byte("hello"))
+	require.NoError(t, err)
+	require.Equal(t, expectedAck.Stream, ack.Stream())
+	require.Equal(t, expectedAck.PartitionSubject, ack.PartitionSubject())
+	require.Equal(t, expectedAck.MsgSubject, ack.MessageSubject())
+	require.Equal(t, expectedAck.Offset, ack.Offset())
+	require.Equal(t, expectedAck.AckInbox, ack.AckInbox())
+	require.Equal(t, expectedAck.CorrelationId, ack.CorrelationID())
+	require.Equal(t, AckPolicy(expectedAck.AckPolicy), ack.AckPolicy())
+
+	req := server.GetPublishRequests()[0]
+	require.Equal(t, []byte(nil), req.Key)
+	require.Equal(t, []byte("hello"), req.Value)
+	require.Equal(t, "foo", req.Stream)
+	require.Equal(t, int32(0), req.Partition)
+	require.Equal(t, map[string][]byte(nil), req.Headers)
+	require.Equal(t, "", req.AckInbox)
+	require.Equal(t, "", req.CorrelationId)
+	require.Equal(t, proto.AckPolicy_LEADER, req.AckPolicy)
+}
+
+func TestPublishToPartition(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	expectedAck := &proto.Ack{
+		Stream:           "foo",
+		PartitionSubject: "foo.1",
+		MsgSubject:       "foo.1",
+		Offset:           0,
+		AckInbox:         "ack",
+		CorrelationId:    "123",
+		AckPolicy:        proto.AckPolicy_ALL,
 	}
 
-	for i := 0; i < 3; i++ {
-		recv := make(chan Message)
-		err = client.Subscribe(context.Background(), name, func(msg Message, err error) {
-			require.NoError(t, err)
-			recv <- msg
-		}, Partition(int32(i)), StartAtEarliestReceived())
-		require.NoError(t, err)
+	server.SetupMockResponse(&proto.PublishResponse{Ack: expectedAck})
 
-		select {
-		case msg := <-recv:
-			_, ok := msgs[string(msg.Value())]
-			require.True(t, ok)
-			delete(msgs, string(msg.Value()))
-		case <-time.After(5 * time.Second):
-			require.Fail(t, "Did not receive expected message")
-		}
+	ack, err := client.Publish(context.Background(), "foo", []byte("hello"),
+		ToPartition(1), Key([]byte("key")), AckPolicyAll(), Header("foo", []byte("bar")))
+
+	require.NoError(t, err)
+	require.Equal(t, expectedAck.Stream, ack.Stream())
+	require.Equal(t, expectedAck.PartitionSubject, ack.PartitionSubject())
+	require.Equal(t, expectedAck.MsgSubject, ack.MessageSubject())
+	require.Equal(t, expectedAck.Offset, ack.Offset())
+	require.Equal(t, expectedAck.AckInbox, ack.AckInbox())
+	require.Equal(t, expectedAck.CorrelationId, ack.CorrelationID())
+	require.Equal(t, AckPolicy(expectedAck.AckPolicy), ack.AckPolicy())
+
+	req := server.GetPublishRequests()[0]
+	require.Equal(t, []byte("key"), req.Key)
+	require.Equal(t, []byte("hello"), req.Value)
+	require.Equal(t, "foo", req.Stream)
+	require.Equal(t, int32(1), req.Partition)
+	require.Equal(t, map[string][]byte(nil), req.Headers)
+	require.Equal(t, "", req.AckInbox)
+	require.Equal(t, "", req.CorrelationId)
+	require.Equal(t, proto.AckPolicy_ALL, req.AckPolicy)
+}
+
+func TestPublishRoundRobin(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	metadataResp := &proto.FetchMetadataResponse{
+		Brokers: []*proto.Broker{{
+			Id:   "a",
+			Host: "localhost",
+			Port: int32(port),
+		}},
+		Metadata: []*proto.StreamMetadata{{
+			Name:    "foo",
+			Subject: "foo",
+			Partitions: map[int32]*proto.PartitionMetadata{
+				0: {
+					Id:       0,
+					Leader:   "a",
+					Replicas: []string{"a"},
+					Isr:      []string{"a"},
+				},
+				1: {
+					Id:       1,
+					Leader:   "a",
+					Replicas: []string{"a"},
+					Isr:      []string{"a"},
+				},
+			},
+		}},
+	}
+	server.SetupMockResponse(metadataResp)
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	server.SetupMockResponse(&proto.PublishResponse{})
+	_, err = client.Publish(context.Background(), "foo", []byte("hello"),
+		PartitionByRoundRobin(), AckPolicyNone())
+	require.NoError(t, err)
+
+	server.SetupMockResponse(&proto.PublishResponse{})
+	_, err = client.Publish(context.Background(), "foo", []byte("hello"),
+		PartitionByRoundRobin(), AckPolicyNone())
+	require.NoError(t, err)
+
+	for i := 0; i < 2; i++ {
+		req := server.GetPublishRequests()[i]
+		require.Equal(t, []byte(nil), req.Key)
+		require.Equal(t, []byte("hello"), req.Value)
+		require.Equal(t, "foo", req.Stream)
+		require.Equal(t, int32(i), req.Partition)
+		require.Equal(t, map[string][]byte(nil), req.Headers)
+		require.Equal(t, "", req.AckInbox)
+		require.Equal(t, "", req.CorrelationId)
+		require.Equal(t, proto.AckPolicy_NONE, req.AckPolicy)
 	}
 }
 
-// Ensure PublishToSubject publishes directly to a NATS subject and all streams
-// attached to the subject receive the message.
 func TestPublishToSubject(t *testing.T) {
-	defer cleanupStorage(t)
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
 
-	// Use a central NATS server.
-	ns := natsdTest.RunDefaultServer()
-	defer ns.Shutdown()
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
 
-	config := getTestConfig("a", true, 5050)
-	s := runServerWithConfig(t, config)
-	defer s.Stop()
-
-	client, err := Connect([]string{"localhost:5050"})
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
 	defer client.Close()
 
-	// Wait for server to elect itself leader.
-	getMetadataLeader(t, 10*time.Second, s)
+	expectedAck := &proto.Ack{
+		Stream:           "foo",
+		PartitionSubject: "foo",
+		MsgSubject:       "foo",
+		Offset:           0,
+		AckInbox:         "ack",
+		CorrelationId:    "123",
+		AckPolicy:        proto.AckPolicy_LEADER,
+	}
 
-	var (
-		subject = "foo"
-		stream1 = "stream1"
-		stream2 = "stream2"
-		streams = []string{stream1, stream2}
-	)
-	require.NoError(t, client.CreateStream(context.Background(), subject, stream1))
-	require.NoError(t, client.CreateStream(context.Background(), subject, stream2))
+	server.SetupMockResponse(&proto.PublishToSubjectResponse{Ack: expectedAck})
 
-	_, err = client.PublishToSubject(context.Background(), subject, []byte("hello"))
+	ack, err := client.PublishToSubject(context.Background(), "foo", []byte("hello"), Key([]byte("key")))
+	require.NoError(t, err)
+	require.Equal(t, expectedAck.Stream, ack.Stream())
+	require.Equal(t, expectedAck.PartitionSubject, ack.PartitionSubject())
+	require.Equal(t, expectedAck.MsgSubject, ack.MessageSubject())
+	require.Equal(t, expectedAck.Offset, ack.Offset())
+	require.Equal(t, expectedAck.AckInbox, ack.AckInbox())
+	require.Equal(t, expectedAck.CorrelationId, ack.CorrelationID())
+	require.Equal(t, AckPolicy(expectedAck.AckPolicy), ack.AckPolicy())
+
+	req := server.GetPublishToSubjectRequests()[0]
+	require.Equal(t, []byte("key"), req.Key)
+	require.Equal(t, []byte("hello"), req.Value)
+	require.Equal(t, "foo", req.Subject)
+	require.Equal(t, map[string][]byte(nil), req.Headers)
+	require.Equal(t, "", req.AckInbox)
+	require.Equal(t, "", req.CorrelationId)
+	require.Equal(t, proto.AckPolicy_LEADER, req.AckPolicy)
+}
+
+func TestFetchMetadata(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	metadataResp := &proto.FetchMetadataResponse{
+		Brokers: []*proto.Broker{{
+			Id:   "a",
+			Host: "localhost",
+			Port: int32(port),
+		}},
+		Metadata: []*proto.StreamMetadata{{
+			Name:    "foo",
+			Subject: "foo",
+			Partitions: map[int32]*proto.PartitionMetadata{
+				0: {
+					Id:       0,
+					Leader:   "a",
+					Replicas: []string{"a"},
+					Isr:      []string{"a"},
+				},
+			},
+		}},
+	}
+	server.SetupMockResponse(metadataResp, metadataResp)
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	metadata, err := client.FetchMetadata(context.Background())
+	require.NoError(t, err)
+	require.Len(t, metadata.Brokers(), 1)
+	broker := metadata.Brokers()[0]
+	require.Equal(t, "a", broker.ID())
+	require.Equal(t, "localhost", broker.Host())
+	require.Equal(t, int32(port), broker.Port())
+	require.Equal(t, fmt.Sprintf("localhost:%d", port), broker.Addr())
+
+	stream := metadata.GetStream("foo")
+	require.NotNil(t, stream)
+	require.Len(t, stream.Partitions(), 1)
+	partition := stream.GetPartition(0)
+	require.NotNil(t, partition)
+	require.Equal(t, int32(0), partition.ID())
+	require.Equal(t, []*BrokerInfo{broker}, partition.Replicas())
+	require.Equal(t, []*BrokerInfo{broker}, partition.ISR())
+	require.Equal(t, broker, partition.Leader())
+
+	req := server.GetFetchMetadataRequests()[0]
+	require.Equal(t, []string(nil), req.Streams)
+}
+
+func TestSubscribeDisconnectError(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	metadataResp := &proto.FetchMetadataResponse{
+		Brokers: []*proto.Broker{{
+			Id:   "a",
+			Host: "localhost",
+			Port: int32(port),
+		}},
+		Metadata: []*proto.StreamMetadata{{
+			Name:    "foo",
+			Subject: "foo",
+			Partitions: map[int32]*proto.PartitionMetadata{
+				0: {
+					Id:       0,
+					Leader:   "a",
+					Replicas: []string{"a"},
+					Isr:      []string{"a"},
+				},
+			},
+		}},
+	}
+	server.SetupMockResponse(metadataResp, metadataResp)
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)}, ResubscribeWaitTime(0))
 	require.NoError(t, err)
 
-	// Ensure both streams received the message.
-	for _, stream := range streams {
-		recv := make(chan Message)
-		err = client.Subscribe(context.Background(), stream, func(msg Message, err error) {
-			require.NoError(t, err)
-			recv <- msg
-		}, StartAtEarliestReceived())
-		require.NoError(t, err)
+	ch := make(chan error)
+	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {
+		ch <- err
+	})
 
-		select {
-		case <-recv:
-		case <-time.After(5 * time.Second):
-			require.Fail(t, "Did not receive expected message")
-		}
+	server.Stop(t)
+
+	select {
+	case err := <-ch:
+		require.Error(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Did not receive expected error")
+	}
+}
+
+func TestResubscribeFail(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	metadataResp := &proto.FetchMetadataResponse{
+		Brokers: []*proto.Broker{{
+			Id:   "a",
+			Host: "localhost",
+			Port: int32(port),
+		}},
+		Metadata: []*proto.StreamMetadata{{
+			Name:    "foo",
+			Subject: "foo",
+			Partitions: map[int32]*proto.PartitionMetadata{
+				0: {
+					Id:       0,
+					Leader:   "a",
+					Replicas: []string{"a"},
+					Isr:      []string{"a"},
+				},
+			},
+		}},
+	}
+	server.SetupMockResponse(metadataResp, metadataResp)
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)},
+		ResubscribeWaitTime(time.Millisecond))
+
+	ch := make(chan error)
+	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {
+		ch <- err
+	})
+	require.NoError(t, err)
+
+	server.Stop(t)
+
+	select {
+	case err := <-ch:
+		require.Error(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Did not receive expected error")
 	}
 }
 
@@ -876,6 +1155,21 @@ func ExampleClient_publish() {
 	if _, err := client.Publish(context.Background(), "bar-stream", []byte("hello"),
 		Key([]byte("key")), PartitionByKey(),
 	); err != nil {
+		panic(err)
+	}
+}
+
+func ExampleClient_publishToSubject() {
+	// Connect to Liftbridge.
+	addr := "localhost:9292"
+	client, err := Connect([]string{addr})
+	if err != nil {
+		panic(err)
+	}
+	defer client.Close()
+
+	// Publish message directly to NATS subject.
+	if _, err := client.PublishToSubject(context.Background(), "foo.bar", []byte("hello")); err != nil {
 		panic(err)
 	}
 }
