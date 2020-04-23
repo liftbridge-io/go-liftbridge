@@ -2,78 +2,24 @@ package liftbridge
 
 import (
 	"fmt"
-	"io/ioutil"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
-	natsdTest "github.com/nats-io/nats-server/test"
-	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/grpclog"
-
-	"github.com/liftbridge-io/liftbridge/server"
 )
 
-var storagePath string
-
-func init() {
-	tmpDir, err := ioutil.TempDir("", "liftbridge_test_")
-	if err != nil {
-		panic(fmt.Errorf("Error creating temp dir: %v", err))
-	}
-	if err := os.Remove(tmpDir); err != nil {
-		panic(fmt.Errorf("Error removing temp dir: %v", err))
-	}
-	storagePath = tmpDir
-
-	// Disable gRPC's logging.
-	logger := grpclog.NewLoggerV2(ioutil.Discard, ioutil.Discard, ioutil.Discard)
-	grpclog.SetLoggerV2(logger)
-}
-
-func cleanupStorage(t *testing.T) {
-	err := os.RemoveAll(storagePath)
-	require.NoError(t, err)
-}
-
-func getTestConfig(id string, bootstrap bool, port int) *server.Config {
-	config := server.NewDefaultConfig()
-	config.Clustering.RaftBootstrapSeed = bootstrap
-	config.DataDir = filepath.Join(storagePath, id)
-	config.Clustering.RaftSnapshots = 1
-	config.Clustering.ServerID = id
-	config.LogLevel = uint32(log.InfoLevel)
-	config.NATS.Servers = []string{"nats://localhost:4222"}
-	config.LogSilent = true
-	config.Port = port
-	return config
-}
-
-func runServerWithConfig(t *testing.T, config *server.Config) *server.Server {
-	server, err := server.RunServerWithConfig(config)
-	require.NoError(t, err)
-	return server
-}
-
 func TestConnPoolMaxConns(t *testing.T) {
-	defer cleanupStorage(t)
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
 
-	// Use a central NATS server.
-	ns := natsdTest.RunDefaultServer()
-	defer ns.Shutdown()
-
-	config := getTestConfig("a", true, 5050)
-	s := runServerWithConfig(t, config)
-	defer s.Stop()
 	p := newConnPool(2, 5*time.Second)
 	conns := []*grpc.ClientConn{}
 	invoked := 0
 	factory := func() (*grpc.ClientConn, error) {
 		invoked++
-		c, err := grpc.Dial("localhost:5050", grpc.WithInsecure())
+		c, err := grpc.Dial(fmt.Sprintf("localhost:%d", port), grpc.WithInsecure())
 		if err == nil {
 			conns = append(conns, c)
 		}
@@ -116,21 +62,16 @@ func TestConnPoolMaxConns(t *testing.T) {
 }
 
 func TestConnPoolReuse(t *testing.T) {
-	defer cleanupStorage(t)
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
 
-	// Use a central NATS server.
-	ns := natsdTest.RunDefaultServer()
-	defer ns.Shutdown()
-
-	config := getTestConfig("a", true, 5050)
-	s := runServerWithConfig(t, config)
-	defer s.Stop()
 	p := newConnPool(2, 400*time.Millisecond)
 	conns := []*grpc.ClientConn{}
 	invoked := 0
 	factory := func() (*grpc.ClientConn, error) {
 		invoked++
-		c, err := grpc.Dial("localhost:5050", grpc.WithInsecure())
+		c, err := grpc.Dial(fmt.Sprintf("localhost:%d", port), grpc.WithInsecure())
 		if err == nil {
 			conns = append(conns, c)
 		}

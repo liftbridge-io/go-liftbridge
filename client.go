@@ -64,7 +64,7 @@ var (
 // Handler is the callback invoked by Subscribe when a message is received on
 // the specified stream. If err is not nil, the subscription will be terminated
 // and no more messages will be received.
-type Handler func(msg Message, err error)
+type Handler func(msg *Message, err error)
 
 // StreamOptions are used to configure new streams.
 type StreamOptions struct {
@@ -184,7 +184,7 @@ type Client interface {
 	// received in time, a DeadlineExceeded status code is returned. If an
 	// AckPolicy and deadline are configured, this returns the Ack on success,
 	// otherwise it returns nil.
-	Publish(ctx context.Context, stream string, value []byte, opts ...MessageOption) (Ack, error)
+	Publish(ctx context.Context, stream string, value []byte, opts ...MessageOption) (*Ack, error)
 
 	// PublishToSubject publishes a new message to the NATS subject. Note that
 	// because this publishes directly to a subject, there may be multiple (or
@@ -197,7 +197,7 @@ type Client interface {
 	// received in time, a DeadlineExceeded status code is returned. If an
 	// AckPolicy and deadline are configured, this returns the first Ack on
 	// success, otherwise it returns nil.
-	PublishToSubject(ctx context.Context, subject string, value []byte, opts ...MessageOption) (Ack, error)
+	PublishToSubject(ctx context.Context, subject string, value []byte, opts ...MessageOption) (*Ack, error)
 
 	// FetchMetadata returns cluster metadata including broker and stream
 	// information.
@@ -639,7 +639,7 @@ func (c *client) Subscribe(ctx context.Context, streamName string, handler Handl
 // deadline are configured, this returns the Ack on success, otherwise it
 // returns nil.
 func (c *client) Publish(ctx context.Context, stream string, value []byte,
-	options ...MessageOption) (Ack, error) {
+	options ...MessageOption) (*Ack, error) {
 
 	opts := &MessageOptions{Headers: make(map[string][]byte)}
 	for _, opt := range options {
@@ -662,7 +662,15 @@ func (c *client) Publish(ctx context.Context, stream string, value []byte,
 		AckPolicy:     opts.AckPolicy.toProto(),
 	}
 
-	return c.publish(ctx, req)
+	var ack *proto.Ack
+	err = c.doResilientRPC(func(client proto.APIClient) error {
+		resp, err := client.Publish(ctx, req)
+		if err == nil {
+			ack = resp.Ack
+		}
+		return err
+	})
+	return ackFromProto(ack), err
 }
 
 // PublishToSubject publishes a new message to the NATS subject. Note that
@@ -677,14 +685,14 @@ func (c *client) Publish(ctx context.Context, stream string, value []byte,
 // AckPolicy and deadline are configured, this returns the first Ack on
 // success, otherwise it returns nil.
 func (c *client) PublishToSubject(ctx context.Context, subject string, value []byte,
-	options ...MessageOption) (Ack, error) {
+	options ...MessageOption) (*Ack, error) {
 
 	opts := &MessageOptions{Headers: make(map[string][]byte)}
 	for _, opt := range options {
 		opt(opts)
 	}
 
-	req := &proto.PublishRequest{
+	req := &proto.PublishToSubjectRequest{
 		Subject:       subject,
 		Key:           opts.Key,
 		Value:         value,
@@ -693,25 +701,21 @@ func (c *client) PublishToSubject(ctx context.Context, subject string, value []b
 		AckPolicy:     opts.AckPolicy.toProto(),
 	}
 
-	return c.publish(ctx, req)
+	var ack *proto.Ack
+	err := c.doResilientRPC(func(client proto.APIClient) error {
+		resp, err := client.PublishToSubject(ctx, req)
+		if err == nil {
+			ack = resp.Ack
+		}
+		return err
+	})
+	return ackFromProto(ack), err
 }
 
 // FetchMetadata returns cluster metadata including broker and stream
 // information.
 func (c *client) FetchMetadata(ctx context.Context) (*Metadata, error) {
 	return c.metadata.update(ctx)
-}
-
-func (c *client) publish(ctx context.Context, req *proto.PublishRequest) (Ack, error) {
-	var ack *proto.Ack
-	err := c.doResilientRPC(func(client proto.APIClient) error {
-		resp, err := client.Publish(ctx, req)
-		if err == nil {
-			ack = resp.Ack
-		}
-		return err
-	})
-	return newProtoAck(ack), err
 }
 
 // partition determines the partition ID to publish the message to. If a
@@ -851,7 +855,7 @@ LOOP:
 			case codes.NotFound:
 				err = ErrStreamDeleted
 			}
-			handler(newProtoMessage(msg), err)
+			handler(messageFromProto(msg), err)
 		}
 		if err != nil {
 			break

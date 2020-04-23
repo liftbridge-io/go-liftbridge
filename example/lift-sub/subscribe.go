@@ -27,7 +27,7 @@ func main() {
 	}
 
 	ctx := context.Background()
-	if err := client.Subscribe(ctx, "bar-stream", func(msg lift.Message, err error) {
+	if err := client.Subscribe(ctx, "bar-stream", func(msg *lift.Message, err error) {
 		if err != nil {
 			panic(err)
 		}
