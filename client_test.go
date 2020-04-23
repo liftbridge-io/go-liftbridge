@@ -37,23 +37,19 @@ func TestUnmarshalAckError(t *testing.T) {
 
 func TestNewMessageUnmarshal(t *testing.T) {
 	var (
-		key      = []byte("foo")
-		value    = []byte("bar")
-		ackInbox = "acks"
+		key     = []byte("foo")
+		value   = []byte("bar")
+		headers = map[string][]byte{"foo": []byte("bar"), "baz": []byte("qux")}
 	)
 	msg := NewMessage(value,
 		Key(key),
-		AckInbox(ackInbox),
-		AckPolicyNone(),
-		CorrelationID("123"),
+		Headers(headers),
 	)
 	actual, err := UnmarshalMessage(msg)
 	require.Nil(t, err)
 	require.Equal(t, key, actual.Key())
 	require.Equal(t, value, actual.Value())
-	require.Equal(t, ackInbox, actual.AckInbox())
-	require.Equal(t, AckPolicy(proto.AckPolicy_NONE), actual.AckPolicy())
-	require.Equal(t, "123", actual.CorrelationID())
+	require.Equal(t, headers, actual.Headers())
 }
 
 func TestUnmarshalMessageError(t *testing.T) {
@@ -242,8 +238,8 @@ func TestSubscribe(t *testing.T) {
 	}
 	server.SetupMockSubscribeMessages(messages)
 
-	ch := make(chan Message)
-	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {
+	ch := make(chan *Message)
+	err = client.Subscribe(context.Background(), "foo", func(msg *Message, err error) {
 		require.NoError(t, err)
 		ch <- msg
 	})
@@ -257,9 +253,6 @@ func TestSubscribe(t *testing.T) {
 		require.Equal(t, time.Unix(0, timestamp), msg.Timestamp())
 		require.Equal(t, "foo", msg.Subject())
 		require.Equal(t, map[string][]byte{"foo": []byte("bar")}, msg.Headers())
-		require.Equal(t, "ack", msg.AckInbox())
-		require.Equal(t, "123", msg.CorrelationID())
-		require.Equal(t, AckPolicy(1), msg.AckPolicy())
 	case <-time.After(2 * time.Second):
 		t.Fatal("Did not receive expected message")
 	}
@@ -303,7 +296,7 @@ func TestSubscribeNoKnownPartition(t *testing.T) {
 	}
 	server.SetupMockResponse(metadataResp, metadataResp, metadataResp, metadataResp, metadataResp)
 
-	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {}, Partition(1))
+	err = client.Subscribe(context.Background(), "foo", func(msg *Message, err error) {}, Partition(1))
 	require.Error(t, err)
 	require.Equal(t, "no known partition", err.Error())
 
@@ -343,7 +336,7 @@ func TestSubscribeNoPartition(t *testing.T) {
 	server.SetupMockResponse(metadataResp, metadataResp, metadataResp, metadataResp, metadataResp)
 	server.SetupMockSubscribeError(status.Error(codes.NotFound, "No such partition"))
 
-	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {},
+	err = client.Subscribe(context.Background(), "foo", func(msg *Message, err error) {},
 		StartAtOffset(3), ReadISRReplica())
 	require.Equal(t, ErrNoSuchPartition, err)
 
@@ -376,7 +369,7 @@ func TestSubscribeNoKnownStream(t *testing.T) {
 	}
 	server.SetupMockResponse(metadataResp, metadataResp, metadataResp, metadataResp, metadataResp)
 
-	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {})
+	err = client.Subscribe(context.Background(), "foo", func(msg *Message, err error) {})
 	require.Error(t, err)
 	require.Equal(t, "no known stream", err.Error())
 
@@ -413,7 +406,7 @@ func TestSubscribeNoLeader(t *testing.T) {
 	}
 	server.SetupMockResponse(metadataResp, metadataResp, metadataResp, metadataResp, metadataResp)
 
-	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {})
+	err = client.Subscribe(context.Background(), "foo", func(msg *Message, err error) {})
 	require.Error(t, err)
 	require.Equal(t, "no known leader for partition", err.Error())
 
@@ -471,8 +464,8 @@ func TestSubscribeNotLeaderRetry(t *testing.T) {
 	server.SetupMockSubscribeError(status.Error(codes.FailedPrecondition, "not leader"))
 	server.SetupMockSubscribeMessages(messages)
 
-	ch := make(chan Message)
-	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {
+	ch := make(chan *Message)
+	err = client.Subscribe(context.Background(), "foo", func(msg *Message, err error) {
 		require.NoError(t, err)
 		ch <- msg
 	}, StartAtEarliestReceived())
@@ -486,9 +479,6 @@ func TestSubscribeNotLeaderRetry(t *testing.T) {
 		require.Equal(t, time.Unix(0, timestamp), msg.Timestamp())
 		require.Equal(t, "foo", msg.Subject())
 		require.Equal(t, map[string][]byte{"foo": []byte("bar")}, msg.Headers())
-		require.Equal(t, "ack", msg.AckInbox())
-		require.Equal(t, "123", msg.CorrelationID())
-		require.Equal(t, AckPolicy(1), msg.AckPolicy())
 	case <-time.After(2 * time.Second):
 		t.Fatal("Did not receive expected message")
 	}
@@ -551,8 +541,8 @@ func TestSubscribeResubscribe(t *testing.T) {
 	server.SetupMockSubscribeAsyncError(status.Error(codes.Unavailable, "temporarily unavailable"))
 	server.SetupMockSubscribeMessages(messages)
 
-	ch := make(chan Message)
-	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {
+	ch := make(chan *Message)
+	err = client.Subscribe(context.Background(), "foo", func(msg *Message, err error) {
 		require.NoError(t, err)
 		ch <- msg
 	}, StartAtTimeDelta(time.Minute))
@@ -566,9 +556,6 @@ func TestSubscribeResubscribe(t *testing.T) {
 		require.Equal(t, time.Unix(0, timestamp), msg.Timestamp())
 		require.Equal(t, "foo", msg.Subject())
 		require.Equal(t, map[string][]byte{"foo": []byte("bar")}, msg.Headers())
-		require.Equal(t, "ack", msg.AckInbox())
-		require.Equal(t, "123", msg.CorrelationID())
-		require.Equal(t, AckPolicy(1), msg.AckPolicy())
 	case <-time.After(2 * time.Second):
 		t.Fatal("Did not receive expected message")
 	}
@@ -616,7 +603,7 @@ func TestSubscribeStreamDeleted(t *testing.T) {
 
 	timestamp := time.Now()
 	ch := make(chan error)
-	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {
+	err = client.Subscribe(context.Background(), "foo", func(msg *Message, err error) {
 		ch <- err
 	}, StartAtTime(timestamp))
 	require.NoError(t, err)
@@ -695,8 +682,8 @@ func TestSubscribeServerUnavailableRetry(t *testing.T) {
 		server.StartOnPort(t, port)
 	}()
 
-	ch := make(chan Message)
-	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {
+	ch := make(chan *Message)
+	err = client.Subscribe(context.Background(), "foo", func(msg *Message, err error) {
 		require.NoError(t, err)
 		ch <- msg
 	}, StartAtLatestReceived())
@@ -710,9 +697,6 @@ func TestSubscribeServerUnavailableRetry(t *testing.T) {
 		require.Equal(t, time.Unix(0, timestamp), msg.Timestamp())
 		require.Equal(t, "foo", msg.Subject())
 		require.Equal(t, map[string][]byte{"foo": []byte("bar")}, msg.Headers())
-		require.Equal(t, "ack", msg.AckInbox())
-		require.Equal(t, "123", msg.CorrelationID())
-		require.Equal(t, AckPolicy(1), msg.AckPolicy())
 	case <-time.After(2 * time.Second):
 		t.Fatal("Did not receive expected message")
 	}
@@ -735,7 +719,7 @@ func TestSubscribeInvalidPartition(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {}, Partition(-1))
+	err = client.Subscribe(context.Background(), "foo", func(msg *Message, err error) {}, Partition(-1))
 	require.Error(t, err)
 
 	require.Len(t, server.GetSubscribeRequests(), 0)
@@ -1016,7 +1000,7 @@ func TestSubscribeDisconnectError(t *testing.T) {
 	require.NoError(t, err)
 
 	ch := make(chan error)
-	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {
+	err = client.Subscribe(context.Background(), "foo", func(msg *Message, err error) {
 		ch <- err
 	})
 
@@ -1060,7 +1044,7 @@ func TestResubscribeFail(t *testing.T) {
 		ResubscribeWaitTime(time.Millisecond))
 
 	ch := make(chan error)
-	err = client.Subscribe(context.Background(), "foo", func(msg Message, err error) {
+	err = client.Subscribe(context.Background(), "foo", func(msg *Message, err error) {
 		ch <- err
 	})
 	require.NoError(t, err)
@@ -1114,7 +1098,7 @@ func ExampleClient_subscribe() {
 	defer client.Close()
 
 	// Subscribe to base stream partition.
-	if err := client.Subscribe(context.Background(), "foo-stream", func(msg Message, err error) {
+	if err := client.Subscribe(context.Background(), "foo-stream", func(msg *Message, err error) {
 		if err != nil {
 			panic(err)
 		}
@@ -1125,7 +1109,7 @@ func ExampleClient_subscribe() {
 
 	// Subscribe to a specific stream partition.
 	ctx := context.Background()
-	if err := client.Subscribe(ctx, "bar-stream", func(msg Message, err error) {
+	if err := client.Subscribe(ctx, "bar-stream", func(msg *Message, err error) {
 		if err != nil {
 			panic(err)
 		}

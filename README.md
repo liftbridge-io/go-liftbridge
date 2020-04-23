@@ -59,7 +59,7 @@ func main() {
 
 	// Subscribe to the stream starting from the beginning.
 	ctx := context.Background()
-	if err := client.Subscribe(ctx, name, func(msg lift.Message, err error) {
+	if err := client.Subscribe(ctx, name, func(msg *lift.Message, err error) {
 		if err != nil {
 			panic(err)
 		}
@@ -102,39 +102,39 @@ or from a random ISR replica
 
 ```go
 // Subscribe starting with new messages only.
-client.Subscribe(ctx, name, func(msg lift.Message, err error) {
+client.Subscribe(ctx, name, func(msg *lift.Message, err error) {
 	fmt.Println(msg.Offset(), string(msg.Value()))
 })
 
 // Subscribe starting with the most recently published value.
-client.Subscribe(ctx, name, func(msg lift.Message, err error) {
+client.Subscribe(ctx, name, func(msg *lift.Message, err error) {
 	fmt.Println(msg.Offset(), string(msg.Value()))
 }, lift.StartAtLatestReceived())
 
 // Subscribe starting with the oldest published value.
-client.Subscribe(ctx, name, func(msg lift.Message, err error) {
+client.Subscribe(ctx, name, func(msg *lift.Message, err error) {
 	fmt.Println(msg.Offset(), string(msg.Value()))
 }, lift.StartAtEarliestReceived())
 
 // Subscribe starting at a specific offset.
-client.Subscribe(ctx, name, func(msg lift.Message, err error) {
+client.Subscribe(ctx, name, func(msg *lift.Message, err error) {
 	fmt.Println(msg.Offset(), string(msg.Value()))
 }, lift.StartAtOffset(42))
 
 // Subscribe starting at a specific time.
-client.Subscribe(ctx, name, func(msg lift.Message, err error) {
+client.Subscribe(ctx, name, func(msg *lift.Message, err error) {
 	fmt.Println(msg.Offset(), string(msg.Value()))
 }, lift.StartAtTime(time.Now()))
 
 // Subscribe starting at a specific amount of time in the past.
-client.Subscribe(ctx, name, func(msg lift.Message, err error) {
+client.Subscribe(ctx, name, func(msg *lift.Message, err error) {
 	fmt.Println(msg.Offset(), string(msg.Value()))
 }, lift.StartAtTimeDelta(time.Minute))
 
 // Subscribe to a random ISR replica
 // this helps reduce the work load
 // for partition leader
-client.Subscribe(ctx, name, func(msg lift.Message, err error) {
+client.Subscribe(ctx, name, func(msg *lift.Message, err error) {
 	fmt.Println(msg.Offset(), string(msg.Value()))
 }, lift.ReadISRReplica())
 ```
@@ -324,7 +324,7 @@ time.
 
 ```go
 // Subscribe to a specific partition.
-client.Subscribe(ctx, "bar-stream", func(msg *proto.Message, err error) {
+client.Subscribe(ctx, "bar-stream", func(msg *lift.Message, err error) {
 	fmt.Println(msg.Offset, string(msg.Value))
 }, lift.Partition(1))
 ```

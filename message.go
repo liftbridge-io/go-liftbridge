@@ -41,173 +41,148 @@ func (a AckPolicy) toProto() proto.AckPolicy {
 	return proto.AckPolicy(a)
 }
 
-// Message being sent to or received from a Liftbridge stream.
-type Message interface {
-	// Offset is a monotonic message sequence in the stream partition.
-	Offset() int64
-
-	// Key is an optional label set on a Message, useful for partitioning and
-	// stream compaction.
-	Key() []byte
-
-	// Value is the Message payload.
-	Value() []byte
-
-	// Timestamp is the time the Message was received by the server.
-	Timestamp() time.Time
-
-	// Subject is the NATS subject the Message was received on.
-	Subject() string
-
-	// ReplySubject is the NATS reply subject on the Message, if any.
-	ReplySubject() string
-
-	// Headers is a set of key-value pairs.
-	Headers() map[string][]byte
-
-	// AckInbox is the NATS subject used to publish acks to.
-	AckInbox() string
-
-	// CorrelationID is a user-supplied value to correlate acks to publishes.
-	CorrelationID() string
-
-	// AckPolicy controls the behavior of acks.
-	AckPolicy() AckPolicy
+// Message received from a Liftbridge stream.
+type Message struct {
+	offset       int64
+	key          []byte
+	value        []byte
+	partition    int32
+	timestamp    time.Time
+	stream       string
+	subject      string
+	replySubject string
+	headers      map[string][]byte
 }
 
-// protoMessage is a Message backed by protobuf.
-type protoMessage struct {
-	msg *proto.Message
-}
-
-func newProtoMessage(msg *proto.Message) Message {
-	if msg == nil {
+func messageFromProto(wireMsg *proto.Message) *Message {
+	if wireMsg == nil {
 		return nil
 	}
-	return &protoMessage{msg}
+	msg := &Message{
+		offset:       wireMsg.GetOffset(),
+		key:          wireMsg.GetKey(),
+		value:        wireMsg.GetValue(),
+		partition:    wireMsg.GetPartition(),
+		timestamp:    time.Unix(0, wireMsg.GetTimestamp()),
+		stream:       wireMsg.GetStream(),
+		subject:      wireMsg.GetSubject(),
+		replySubject: wireMsg.GetReplySubject(),
+		headers:      wireMsg.GetHeaders(),
+	}
+	return msg
 }
 
 // Offset is a monotonic message sequence in the stream partition.
-func (p *protoMessage) Offset() int64 {
-	return p.msg.GetOffset()
+func (m *Message) Offset() int64 {
+	return m.offset
 }
 
 // Key is an optional label set on a Message, useful for partitioning and
 // stream compaction.
-func (p *protoMessage) Key() []byte {
-	return p.msg.GetKey()
+func (m *Message) Key() []byte {
+	return m.key
 }
 
 // Value is the Message payload.
-func (p *protoMessage) Value() []byte {
-	return p.msg.GetValue()
+func (m *Message) Value() []byte {
+	return m.value
 }
 
 // Timestamp is the time the Message was received by the server.
-func (p *protoMessage) Timestamp() time.Time {
-	return time.Unix(0, p.msg.GetTimestamp())
+func (m *Message) Timestamp() time.Time {
+	return m.timestamp
 }
 
 // Subject is the NATS subject the Message was received on.
-func (p *protoMessage) Subject() string {
-	return p.msg.GetSubject()
+func (m *Message) Subject() string {
+	return m.subject
 }
 
 // ReplySubject is the NATS reply subject on the Message, if any.
-func (p *protoMessage) ReplySubject() string {
-	return p.msg.GetReplySubject()
+func (m *Message) ReplySubject() string {
+	return m.replySubject
 }
 
 // Headers is a set of key-value pairs.
-func (p *protoMessage) Headers() map[string][]byte {
-	return p.msg.GetHeaders()
+func (m *Message) Headers() map[string][]byte {
+	headers := make(map[string][]byte, len(m.headers))
+	for key, value := range m.headers {
+		headers[key] = value
+	}
+	return headers
 }
 
-// AckInbox is the NATS subject used to publish acks to.
-func (p *protoMessage) AckInbox() string {
-	return p.msg.GetAckInbox()
+// Stream the Message was received on.
+func (m *Message) Stream() string {
+	return m.stream
 }
 
-// CorrelationID is a user-supplied value to correlate acks to publishes.
-func (p *protoMessage) CorrelationID() string {
-	return p.msg.GetCorrelationId()
-}
-
-// AckPolicy controls the behavior of acks.
-func (p *protoMessage) AckPolicy() AckPolicy {
-	return AckPolicy(p.msg.GetAckPolicy())
+// Partition the Message was received on.
+func (m *Message) Partition() int32 {
+	return m.partition
 }
 
 // Ack represents an acknowledgement that a message was committed to a stream
 // partition.
-type Ack interface {
-	// Stream the Message was received on.
-	Stream() string
-
-	// PartitionSubject is the NATS subject the partition is attached to.
-	PartitionSubject() string
-
-	// MessageSubject is the NATS subject the message was received on.
-	MessageSubject() string
-
-	// Offset is the partition offset the message was committed to.
-	Offset() int64
-
-	// AckInbox is the NATS subject the ack was published to.
-	AckInbox() string
-
-	// CorrelationID is the user-supplied value from the message.
-	CorrelationID() string
-
-	// AckPolicy sent on the message.
-	AckPolicy() AckPolicy
+type Ack struct {
+	stream           string
+	partitionSubject string
+	messageSubject   string
+	offset           int64
+	ackInbox         string
+	correlationID    string
+	ackPolicy        AckPolicy
 }
 
-// protoAck is an Ack backed by protobuf.
-type protoAck struct {
-	ack *proto.Ack
-}
-
-func newProtoAck(ack *proto.Ack) Ack {
-	if ack == nil {
+func ackFromProto(wireAck *proto.Ack) *Ack {
+	if wireAck == nil {
 		return nil
 	}
-	return &protoAck{ack}
+	ack := &Ack{
+		stream:           wireAck.GetStream(),
+		partitionSubject: wireAck.GetPartitionSubject(),
+		messageSubject:   wireAck.GetMsgSubject(),
+		offset:           wireAck.GetOffset(),
+		ackInbox:         wireAck.GetAckInbox(),
+		correlationID:    wireAck.GetCorrelationId(),
+		ackPolicy:        AckPolicy(wireAck.GetAckPolicy()),
+	}
+	return ack
 }
 
 // Stream the Message was received on.
-func (p *protoAck) Stream() string {
-	return p.ack.GetStream()
+func (a *Ack) Stream() string {
+	return a.stream
 }
 
 // PartitionSubject is the NATS subject the partition is attached to.
-func (p *protoAck) PartitionSubject() string {
-	return p.ack.GetPartitionSubject()
+func (a *Ack) PartitionSubject() string {
+	return a.partitionSubject
 }
 
 // MessageSubject is the NATS subject the message was received on.
-func (p *protoAck) MessageSubject() string {
-	return p.ack.GetMsgSubject()
+func (a *Ack) MessageSubject() string {
+	return a.messageSubject
 }
 
 // Offset is the partition offset the message was committed to.
-func (p *protoAck) Offset() int64 {
-	return p.ack.GetOffset()
+func (a *Ack) Offset() int64 {
+	return a.offset
 }
 
 // AckInbox is the NATS subject the ack was published to.
-func (p *protoAck) AckInbox() string {
-	return p.ack.GetAckInbox()
+func (a *Ack) AckInbox() string {
+	return a.ackInbox
 }
 
 // CorrelationID is the user-supplied value from the message.
-func (p *protoAck) CorrelationID() string {
-	return p.ack.GetCorrelationId()
+func (a *Ack) CorrelationID() string {
+	return a.correlationID
 }
 
 // AckPolicy sent on the message.
-func (p *protoAck) AckPolicy() AckPolicy {
-	return AckPolicy(p.ack.GetAckPolicy())
+func (a *Ack) AckPolicy() AckPolicy {
+	return a.ackPolicy
 }
 
 // Partitioner is used to map a message to a stream partition.
@@ -436,6 +411,7 @@ func NewMessage(value []byte, options ...MessageOption) []byte {
 		AckInbox:      opts.AckInbox,
 		CorrelationId: opts.CorrelationID,
 		AckPolicy:     opts.AckPolicy.toProto(),
+		Headers:       opts.Headers,
 	}, msgTypePublish)
 	if err != nil {
 		panic(err)
@@ -445,22 +421,22 @@ func NewMessage(value []byte, options ...MessageOption) []byte {
 
 // UnmarshalAck deserializes an Ack from the given byte slice. It returns an
 // error if the given data is not actually an Ack.
-func UnmarshalAck(data []byte) (Ack, error) {
+func UnmarshalAck(data []byte) (*Ack, error) {
 	ack := new(proto.Ack)
 	if err := unmarshalEnvelope(data, ack, msgTypeAck); err != nil {
 		return nil, err
 	}
-	return newProtoAck(ack), nil
+	return ackFromProto(ack), nil
 }
 
 // UnmarshalMessage deserializes a message from the given byte slice. It
 // returns an error if the given data is not actually a Message.
-func UnmarshalMessage(data []byte) (Message, error) {
+func UnmarshalMessage(data []byte) (*Message, error) {
 	msg := new(proto.Message)
 	if err := unmarshalEnvelope(data, msg, msgTypePublish); err != nil {
 		return nil, err
 	}
-	return newProtoMessage(msg), nil
+	return messageFromProto(msg), nil
 }
 
 func unmarshalEnvelope(data []byte, msg pb.Message, expectedType msgType) error {
