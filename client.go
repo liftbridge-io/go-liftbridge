@@ -59,6 +59,10 @@ var (
 	// ErrStreamDeleted is sent to subscribers when the stream they are
 	// subscribed to has been deleted.
 	ErrStreamDeleted = errors.New("stream has been deleted")
+
+	// ErrPartitionPaused is sent to subscribers when the stream partition they
+	// are subscribed to has been paused.
+	ErrPartitionPaused = errors.New("stream partition has been paused")
 )
 
 // Handler is the callback invoked by Subscribe when a message is received on
@@ -853,7 +857,11 @@ LOOP:
 				}
 				break LOOP
 			case codes.NotFound:
+				// Indicates the stream was deleted.
 				err = ErrStreamDeleted
+			case codes.FailedPrecondition:
+				// Indicates the partition was paused.
+				err = ErrPartitionPaused
 			}
 			handler(messageFromProto(msg), err)
 		}
