@@ -572,12 +572,6 @@ func TestSubscribeStreamDeleted(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
-
-	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
-	require.NoError(t, err)
-	defer client.Close()
-
 	metadataResp := &proto.FetchMetadataResponse{
 		Brokers: []*proto.Broker{{
 			Id:   "a",
@@ -598,6 +592,10 @@ func TestSubscribeStreamDeleted(t *testing.T) {
 		}},
 	}
 	server.SetupMockResponse(metadataResp, metadataResp)
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
 
 	server.SetupMockSubscribeAsyncError(status.Error(codes.NotFound, "stream deleted"))
 
@@ -620,6 +618,58 @@ func TestSubscribeStreamDeleted(t *testing.T) {
 	require.Equal(t, int32(0), req.Partition)
 	require.Equal(t, proto.StartPosition_TIMESTAMP, req.StartPosition)
 	require.Equal(t, timestamp.UnixNano(), req.StartTimestamp)
+	require.False(t, req.ReadISRReplica)
+}
+
+func TestSubscribePartitionPaused(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	metadataResp := &proto.FetchMetadataResponse{
+		Brokers: []*proto.Broker{{
+			Id:   "a",
+			Host: "localhost",
+			Port: int32(port),
+		}},
+		Metadata: []*proto.StreamMetadata{{
+			Name:    "foo",
+			Subject: "foo",
+			Partitions: map[int32]*proto.PartitionMetadata{
+				0: {
+					Id:       0,
+					Leader:   "a",
+					Replicas: []string{"a"},
+					Isr:      []string{"a"},
+				},
+			},
+		}},
+	}
+	server.SetupMockResponse(metadataResp)
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	server.SetupMockSubscribeAsyncError(status.Error(codes.FailedPrecondition, "partition paused"))
+
+	ch := make(chan error)
+	err = client.Subscribe(context.Background(), "foo", func(msg *Message, err error) {
+		ch <- err
+	})
+	require.NoError(t, err)
+
+	select {
+	case err := <-ch:
+		require.Equal(t, ErrPartitionPaused, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Did not receive expected message")
+	}
+
+	req := server.GetSubscribeRequests()[0]
+	require.Equal(t, "foo", req.Stream)
+	require.Equal(t, int32(0), req.Partition)
+	require.Equal(t, proto.StartPosition_NEW_ONLY, req.StartPosition)
 	require.False(t, req.ReadISRReplica)
 }
 
