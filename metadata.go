@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	proto "github.com/liftbridge-io/liftbridge-api/go"
+	proto "liftbridge-api/go"
 )
 
 // StreamInfo contains information for a Liftbridge stream.

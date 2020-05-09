@@ -4,6 +4,7 @@ go 1.13
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/gogo/protobuf v1.3.1
 	github.com/golang/protobuf v1.4.0
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/liftbridge-io/liftbridge-api v1.0.0-beta.0.20200423230528-d9f61faac39e

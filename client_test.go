@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	proto "github.com/liftbridge-io/liftbridge-api/go"
+	proto "liftbridge-api/go"
 )
 
 func TestUnmarshalAck(t *testing.T) {
