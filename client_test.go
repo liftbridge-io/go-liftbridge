@@ -6,12 +6,11 @@ import (
 	"testing"
 	"time"
 
+	proto "github.com/liftbridge-io/liftbridge-api/go"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	proto "liftbridge-api/go"
 )
 
 func TestUnmarshalAck(t *testing.T) {
