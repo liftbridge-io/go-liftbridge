@@ -15,15 +15,17 @@ func TestConnPoolMaxConns(t *testing.T) {
 	port := server.Start(t)
 
 	p := newConnPool(2, 5*time.Second)
-	conns := []*grpc.ClientConn{}
+	conns := []*conn{}
 	invoked := 0
-	factory := func() (*grpc.ClientConn, error) {
+	factory := func() (*conn, error) {
 		invoked++
-		c, err := grpc.Dial(fmt.Sprintf("localhost:%d", port), grpc.WithInsecure())
-		if err == nil {
-			conns = append(conns, c)
+		grpcConn, err := grpc.Dial(fmt.Sprintf("localhost:%d", port), grpc.WithInsecure())
+		if err != nil {
+			return nil, err
 		}
-		return c, err
+		c := newConn(grpcConn)
+		conns = append(conns, c)
+		return c, nil
 	}
 
 	require.Equal(t, 0, len(p.conns))
@@ -67,15 +69,17 @@ func TestConnPoolReuse(t *testing.T) {
 	port := server.Start(t)
 
 	p := newConnPool(2, 400*time.Millisecond)
-	conns := []*grpc.ClientConn{}
+	conns := []*conn{}
 	invoked := 0
-	factory := func() (*grpc.ClientConn, error) {
+	factory := func() (*conn, error) {
 		invoked++
-		c, err := grpc.Dial(fmt.Sprintf("localhost:%d", port), grpc.WithInsecure())
-		if err == nil {
-			conns = append(conns, c)
+		grpcConn, err := grpc.Dial(fmt.Sprintf("localhost:%d", port), grpc.WithInsecure())
+		if err != nil {
+			return nil, err
 		}
-		return c, err
+		c := newConn(grpcConn)
+		conns = append(conns, c)
+		return c, nil
 	}
 
 	require.Equal(t, 0, len(p.conns))

@@ -4,21 +4,40 @@ import (
 	"sync"
 	"time"
 
+	proto "github.com/liftbridge-io/liftbridge-api/go"
 	"google.golang.org/grpc"
 )
 
-// connFactory creates a gRPC ClientConn.
-type connFactory func() (*grpc.ClientConn, error)
+// connFactory creates a Liftbridge conn.
+type connFactory func() (*conn, error)
 
-// connPool maintains a pool of gRPC ClientConns. It limits the number of
+// conn is a gRPC client and its associated connection for communicating with a
+// Liftbridge server.
+type conn struct {
+	proto.APIClient
+	clientConn *grpc.ClientConn
+}
+
+func newConn(grpcConn *grpc.ClientConn) *conn {
+	return &conn{
+		APIClient:  proto.NewAPIClient(grpcConn),
+		clientConn: grpcConn,
+	}
+}
+
+func (c *conn) Close() error {
+	return c.clientConn.Close()
+}
+
+// connPool maintains a pool of Liftbridge conns. It limits the number of
 // connections based on maxConns and closes unused connections based on
 // keepAliveTime.
 type connPool struct {
 	mu            sync.Mutex
-	conns         []*grpc.ClientConn
+	conns         []*conn
 	maxConns      int
 	keepAliveTime time.Duration
-	timers        map[*grpc.ClientConn]*time.Timer
+	timers        map[*conn]*time.Timer
 }
 
 // newConnPool creates a new connPool with the given maxConns and keepAliveTime
@@ -29,17 +48,17 @@ func newConnPool(maxConns int, keepAliveTime time.Duration) *connPool {
 	return &connPool{
 		maxConns:      maxConns,
 		keepAliveTime: keepAliveTime,
-		conns:         make([]*grpc.ClientConn, 0, maxConns),
-		timers:        make(map[*grpc.ClientConn]*time.Timer),
+		conns:         make([]*conn, 0, maxConns),
+		timers:        make(map[*conn]*time.Timer),
 	}
 }
 
-// get returns a gRPC ClientConn either from the pool, if any, or by using the
+// get returns a Liftbridge conn either from the pool, if any, or by using the
 // providing connFactory.
-func (p *connPool) get(factory connFactory) (*grpc.ClientConn, error) {
+func (p *connPool) get(factory connFactory) (*conn, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	var c *grpc.ClientConn
+	var c *conn
 	var e error
 	if len(p.conns) > 0 {
 		c, p.conns = p.conns[0], p.conns[1:]
@@ -55,9 +74,9 @@ func (p *connPool) get(factory connFactory) (*grpc.ClientConn, error) {
 	return c, e
 }
 
-// put returns the given gRPC ClientConn to the pool if there is capacity or
+// put returns the given Liftbridge conn to the pool if there is capacity or
 // closes it if there is not.
-func (p *connPool) put(conn *grpc.ClientConn) error {
+func (p *connPool) put(conn *conn) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.maxConns == 0 || len(p.conns) < p.maxConns {
@@ -75,7 +94,7 @@ func (p *connPool) put(conn *grpc.ClientConn) error {
 
 // connExpired is called when the keepAliveTime timer has fired for the given
 // connection. This will close and remove the connection from the pool.
-func (p *connPool) connExpired(conn *grpc.ClientConn) func() {
+func (p *connPool) connExpired(conn *conn) func() {
 	return func() {
 		p.mu.Lock()
 		defer p.mu.Unlock()
@@ -100,7 +119,7 @@ func (p *connPool) close() error {
 			return err
 		}
 	}
-	p.conns = make([]*grpc.ClientConn, 0)
+	p.conns = make([]*conn, 0)
 	for c, timer := range p.timers {
 		timer.Stop()
 		delete(p.timers, c)
@@ -109,7 +128,7 @@ func (p *connPool) close() error {
 }
 
 // remove returns the slice with the given index removed.
-func remove(conns []*grpc.ClientConn, i int) []*grpc.ClientConn {
+func remove(conns []*conn, i int) []*conn {
 	conns[len(conns)-1], conns[i] = conns[i], conns[len(conns)-1]
 	return conns[:len(conns)-1]
 }
