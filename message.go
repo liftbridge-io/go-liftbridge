@@ -9,8 +9,9 @@ import (
 	"sync"
 	"time"
 
+	proto "github.com/liftbridge-io/liftbridge-api/go"
+
 	pb "github.com/golang/protobuf/proto"
-	"github.com/liftbridge-io/liftbridge-api/go"
 )
 
 var (

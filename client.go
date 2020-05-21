@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gogo/protobuf/types"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -88,6 +89,28 @@ type StreamOptions struct {
 	// this will behave as a stream with a single partition. If this is not
 	// set, it defaults to 1.
 	Partitions int32
+
+	// The maximum size a stream's log can grow to, in bytes, before we will discard
+	// old log segments to free up space. A value of 0 indicates no limit.
+	RetentionMaxBytes int64
+	// The maximum size a stream's log can grow to, in number of messages, before we will discard
+	// old log segments to free up space. A value of 0 indicates no limit.
+	RetentionMaxMessages int64
+	// The TTL for stream log segment files, after which they are deleted. A value of 0 indicates no TTL.
+	RetentionMaxAge time.Duration
+	// The frequency to check if a new stream log segment file should be rolled and whether any segments are
+	// eligible for deletion based on the retention policy or compaction if enabled.
+	CleanerInterval time.Duration
+	// The maximum size of a single stream log segment file in bytes. Retention is always done a file at a time,
+	// so a larger segment size means fewer files but less granular control over retention.
+	SegmentMaxBytes int64
+	// The maximum time before a new stream log segment is rolled out. A value of 0 means new segments will only
+	// be rolled when segment.max.bytes is reached. Retention is always done a file at a time,
+	// so a larger value means fewer files but less granular control over retention.
+	SegmentMaxAge time.Duration
+	// The maximum number of concurrent goroutines to use for compaction on a stream log (only applicable
+	// if compact.enabled is true).
+	CompactMaxGoroutines int64
 }
 
 // StreamOption is a function on the StreamOptions for a stream. These are used
@@ -139,6 +162,62 @@ func Partitions(partitions int32) StreamOption {
 			return fmt.Errorf("invalid number of partitions: %d", partitions)
 		}
 		o.Partitions = partitions
+		return nil
+	}
+}
+
+// RetentionMaxBytes set the value of retention.max.bytes configuration for stream
+func RetentionMaxBytes(val int64) StreamOption {
+	return func(o *StreamOptions) error {
+		o.RetentionMaxBytes = val
+		return nil
+	}
+}
+
+// RetentionMaxMessages set the value of retention.max.messages configuration for stream
+func RetentionMaxMessages(val int64) StreamOption {
+	return func(o *StreamOptions) error {
+		o.RetentionMaxMessages = val
+		return nil
+	}
+}
+
+// RetentionMaxAge set the value of retention.max.age configuration for stream
+func RetentionMaxAge(val time.Duration) StreamOption {
+	return func(o *StreamOptions) error {
+		o.RetentionMaxAge = val
+		return nil
+	}
+}
+
+// CleanerInterval set the value of cleaner.interval configuration for stream
+func CleanerInterval(val time.Duration) StreamOption {
+	return func(o *StreamOptions) error {
+		o.CleanerInterval = val
+		return nil
+	}
+}
+
+// SegmentMaxBytes set the value of segment.max.bytes configuration for stream
+func SegmentMaxBytes(val int64) StreamOption {
+	return func(o *StreamOptions) error {
+		o.SegmentMaxBytes = val
+		return nil
+	}
+}
+
+// SegmentMaxAge set the value of segment.max.age configuration for stream
+func SegmentMaxAge(val time.Duration) StreamOption {
+	return func(o *StreamOptions) error {
+		o.SegmentMaxAge = val
+		return nil
+	}
+}
+
+// CompactMaxGoroutines set the value of compact.max.goroutines configuration for stream
+func CompactMaxGoroutines(val int64) StreamOption {
+	return func(o *StreamOptions) error {
+		o.CompactMaxGoroutines = val
 		return nil
 	}
 }
@@ -420,11 +499,18 @@ func (c *client) CreateStream(ctx context.Context, subject, name string, options
 	}
 
 	req := &proto.CreateStreamRequest{
-		Subject:           subject,
-		Name:              name,
-		ReplicationFactor: opts.ReplicationFactor,
-		Group:             opts.Group,
-		Partitions:        opts.Partitions,
+		Subject:              subject,
+		Name:                 name,
+		ReplicationFactor:    opts.ReplicationFactor,
+		Group:                opts.Group,
+		Partitions:           opts.Partitions,
+		RetentionMaxBytes:    opts.RetentionMaxBytes,
+		RetentionMaxMessages: opts.RetentionMaxMessages,
+		RetentionMaxAge:      types.DurationProto(opts.RetentionMaxAge),
+		CleanerInterval:      types.DurationProto(opts.CleanerInterval),
+		SegmentMaxBytes:      opts.SegmentMaxBytes,
+		SegmentMaxAge:        types.DurationProto(opts.SegmentMaxAge),
+		CompactMaxGoroutines: opts.CompactMaxGoroutines,
 	}
 	err := c.doResilientRPC(func(client proto.APIClient) error {
 		_, err := client.CreateStream(ctx, req)
