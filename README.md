@@ -90,6 +90,19 @@ in the same group, messages will be balanced among them.
 // all the brokers in the cluster. ErrStreamExists is returned if a stream with
 // the given name already exists.
 client.CreateStream(context.Background(), "foo.*", "my-stream", lift.MaxReplication())
+
+// Create a stream attached to the NATS subject "foo.*" that is replicated to
+// all the brokers in the cluster. ErrStreamExists is returned if a stream with
+// the given name already exists.
+// This also set the retention.max.age for the created stream
+client.CreateStream(context.Background(), subject, name, lift.RetentionMaxAge(time.Nanosecond))
+
+// Create a stream attached to the NATS subject "foo.*" that is replicated to
+// all the brokers in the cluster. ErrStreamExists is returned if a stream with
+// the given name already exists.
+// This also set the retention.max.messages for the created stream
+client.CreateStream(context.Background(), subject, name, lift.RetentionMaxMessages(2000))
+
 ```
 
 ### Subscription Start/Replay Options
