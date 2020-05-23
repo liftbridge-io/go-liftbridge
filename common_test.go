@@ -334,6 +334,11 @@ func (m *mockAPI) Publish(ctx context.Context, in *proto.PublishRequest) (*proto
 	return resp.(*proto.PublishResponse), nil
 }
 
+// TODO: implement mock method once the API supports it
+func (m *mockAPI) PublishAsync(asyncServer proto.API_PublishAsyncServer) error {
+	return nil
+}
+
 func (m *mockAPI) PublishToSubject(ctx context.Context, in *proto.PublishToSubjectRequest) (*proto.PublishToSubjectResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

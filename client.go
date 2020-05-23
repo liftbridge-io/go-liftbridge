@@ -17,7 +17,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gogo/protobuf/types"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -506,10 +505,10 @@ func (c *client) CreateStream(ctx context.Context, subject, name string, options
 		Partitions:           opts.Partitions,
 		RetentionMaxBytes:    opts.RetentionMaxBytes,
 		RetentionMaxMessages: opts.RetentionMaxMessages,
-		RetentionMaxAge:      types.DurationProto(opts.RetentionMaxAge),
-		CleanerInterval:      types.DurationProto(opts.CleanerInterval),
+		RetentionMaxAge:      opts.RetentionMaxAge.Minutes(),
+		CleanerInterval:      opts.CleanerInterval.Minutes(),
 		SegmentMaxBytes:      opts.SegmentMaxBytes,
-		SegmentMaxAge:        types.DurationProto(opts.SegmentMaxAge),
+		SegmentMaxAge:        opts.SegmentMaxAge.Minutes(),
 		CompactMaxGoroutines: opts.CompactMaxGoroutines,
 	}
 	err := c.doResilientRPC(func(client proto.APIClient) error {
