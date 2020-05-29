@@ -6,16 +6,16 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/golang/protobuf v1.4.1
 	github.com/kr/pretty v0.1.0 // indirect
-	github.com/liftbridge-io/liftbridge-api v1.0.0-beta.0.20200430192433-471131e7dc13
+	github.com/liftbridge-io/liftbridge-api v1.0.1-0.20200513211853-e05fca3b17e3
 	github.com/nats-io/nats-server/v2 v2.1.4 // indirect
 	github.com/nats-io/nats.go v1.9.2
 	github.com/nats-io/nuid v1.0.1
 	github.com/stretchr/testify v1.4.0
 	golang.org/x/crypto v0.0.0-20200420201142-3c4aac89819a // indirect
-	golang.org/x/net v0.0.0-20200505041828-1ed23360d12c // indirect
-	golang.org/x/sys v0.0.0-20200501145240-bc7a7d42d5c3 // indirect
+	golang.org/x/net v0.0.0-20200513185701-a91f0712d120 // indirect
+	golang.org/x/sys v0.0.0-20200513112337-417ce2331b5c // indirect
 	golang.org/x/text v0.3.2 // indirect
-	google.golang.org/genproto v0.0.0-20200430143042-b979b6f78d84 // indirect
+	google.golang.org/genproto v0.0.0-20200513103714-09dca8ec2884 // indirect
 	google.golang.org/grpc v1.29.1
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 	gopkg.in/yaml.v2 v2.2.8 // indirect

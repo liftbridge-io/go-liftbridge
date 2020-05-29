@@ -3,6 +3,7 @@ package liftbridge
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"runtime"
 	"strings"
@@ -12,6 +13,8 @@ import (
 	proto "github.com/liftbridge-io/liftbridge-api/go"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Used by both testing.B and testing.T so need to use
@@ -110,7 +113,7 @@ type mockAPI struct {
 	pauseStreamRequests      []*proto.PauseStreamRequest
 	subscribeRequests        []*proto.SubscribeRequest
 	fetchMetadataRequests    []*proto.FetchMetadataRequest
-	publishRequests          []*proto.PublishRequest
+	publishAsyncRequests     []*proto.PublishRequest
 	publishToSubjectRequests []*proto.PublishToSubjectRequest
 	responses                []interface{}
 	messages                 []*proto.Message
@@ -121,6 +124,7 @@ type mockAPI struct {
 	subscribeAsyncErr        error
 	fetchMetadataErr         error
 	publishErr               error
+	publishAsyncErr          error
 	publishToSubjectErr      error
 }
 
@@ -131,7 +135,7 @@ func newMockAPI() *mockAPI {
 		pauseStreamRequests:      []*proto.PauseStreamRequest{},
 		subscribeRequests:        []*proto.SubscribeRequest{},
 		fetchMetadataRequests:    []*proto.FetchMetadataRequest{},
-		publishRequests:          []*proto.PublishRequest{},
+		publishAsyncRequests:     []*proto.PublishRequest{},
 		publishToSubjectRequests: []*proto.PublishToSubjectRequest{},
 	}
 }
@@ -178,6 +182,12 @@ func (m *mockAPI) SetupMockPublishError(err error) {
 	m.publishErr = err
 }
 
+func (m *mockAPI) SetupMockPublishAsyncError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.publishAsyncErr = err
+}
+
 func (m *mockAPI) SetupMockPublishToSubjectError(err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -220,10 +230,10 @@ func (m *mockAPI) GetSubscribeRequests() []*proto.SubscribeRequest {
 	return m.subscribeRequests
 }
 
-func (m *mockAPI) GetPublishRequests() []*proto.PublishRequest {
+func (m *mockAPI) GetPublishAsyncRequests() []*proto.PublishRequest {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.publishRequests
+	return m.publishAsyncRequests
 }
 
 func (m *mockAPI) GetPublishToSubjectRequests() []*proto.PublishToSubjectRequest {
@@ -239,6 +249,9 @@ func (m *mockAPI) GetFetchMetadataRequests() []*proto.FetchMetadataRequest {
 }
 
 func (m *mockAPI) getResponse() interface{} {
+	if len(m.responses) == 0 {
+		return nil
+	}
 	resp := m.responses[0]
 	m.responses = m.responses[1:]
 	return resp
@@ -321,21 +334,40 @@ func (m *mockAPI) FetchMetadata(ctx context.Context, in *proto.FetchMetadataRequ
 }
 
 func (m *mockAPI) Publish(ctx context.Context, in *proto.PublishRequest) (*proto.PublishResponse, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.publishRequests = append(m.publishRequests, in)
-	if m.publishErr != nil {
-		err := m.publishErr
-		m.publishErr = nil
-		return nil, err
-	}
-	resp := m.getResponse()
-	return resp.(*proto.PublishResponse), nil
+	panic("Publish is deprecated")
 }
 
 func (m *mockAPI) PublishAsync(stream proto.API_PublishAsyncServer) error {
-	// TODO
-	return nil
+	m.mu.Lock()
+	if m.publishAsyncErr != nil {
+		err := m.publishAsyncErr
+		m.publishAsyncErr = nil
+		m.mu.Unlock()
+		return err
+	}
+	m.mu.Unlock()
+	for {
+		req, err := stream.Recv()
+		if err != nil {
+			if err == io.EOF || status.Code(err) == codes.Canceled {
+				return nil
+			}
+			return err
+		}
+		m.mu.Lock()
+		m.publishAsyncRequests = append(m.publishAsyncRequests, req)
+		m.mu.Unlock()
+
+		if req.AckPolicy != proto.AckPolicy_NONE {
+			respIface := m.getResponse()
+			if respIface == nil {
+				continue
+			}
+			resp := respIface.(*proto.PublishResponse)
+			resp.Ack.CorrelationId = req.CorrelationId
+			stream.Send(resp)
+		}
+	}
 }
 
 func (m *mockAPI) PublishToSubject(ctx context.Context, in *proto.PublishToSubjectRequest) (*proto.PublishToSubjectResponse, error) {
