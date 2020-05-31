@@ -10,7 +10,6 @@ import (
 	"time"
 
 	proto "github.com/liftbridge-io/liftbridge-api/go"
-
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 )
@@ -332,11 +331,6 @@ func (m *mockAPI) Publish(ctx context.Context, in *proto.PublishRequest) (*proto
 	}
 	resp := m.getResponse()
 	return resp.(*proto.PublishResponse), nil
-}
-
-// TODO: implement mock method once the API supports it
-func (m *mockAPI) PublishAsync(asyncServer proto.API_PublishAsyncServer) error {
-	return nil
 }
 
 func (m *mockAPI) PublishToSubject(ctx context.Context, in *proto.PublishToSubjectRequest) (*proto.PublishToSubjectResponse, error) {

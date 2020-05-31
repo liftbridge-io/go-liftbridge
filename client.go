@@ -96,17 +96,17 @@ type StreamOptions struct {
 	// old log segments to free up space. A value of 0 indicates no limit.
 	RetentionMaxMessages int64
 	// The TTL for stream log segment files, after which they are deleted. A value of 0 indicates no TTL.
-	RetentionMaxAge time.Duration
+	RetentionMaxAge int64
 	// The frequency to check if a new stream log segment file should be rolled and whether any segments are
 	// eligible for deletion based on the retention policy or compaction if enabled.
-	CleanerInterval time.Duration
+	CleanerInterval int64
 	// The maximum size of a single stream log segment file in bytes. Retention is always done a file at a time,
 	// so a larger segment size means fewer files but less granular control over retention.
 	SegmentMaxBytes int64
 	// The maximum time before a new stream log segment is rolled out. A value of 0 means new segments will only
 	// be rolled when segment.max.bytes is reached. Retention is always done a file at a time,
 	// so a larger value means fewer files but less granular control over retention.
-	SegmentMaxAge time.Duration
+	SegmentMaxAge int64
 	// The maximum number of concurrent goroutines to use for compaction on a stream log (only applicable
 	// if compact.enabled is true).
 	CompactMaxGoroutines int64
@@ -182,7 +182,7 @@ func RetentionMaxMessages(val int64) StreamOption {
 }
 
 // RetentionMaxAge set the value of retention.max.age configuration for stream
-func RetentionMaxAge(val time.Duration) StreamOption {
+func RetentionMaxAge(val int64) StreamOption {
 	return func(o *StreamOptions) error {
 		o.RetentionMaxAge = val
 		return nil
@@ -190,7 +190,7 @@ func RetentionMaxAge(val time.Duration) StreamOption {
 }
 
 // CleanerInterval set the value of cleaner.interval configuration for stream
-func CleanerInterval(val time.Duration) StreamOption {
+func CleanerInterval(val int64) StreamOption {
 	return func(o *StreamOptions) error {
 		o.CleanerInterval = val
 		return nil
@@ -206,7 +206,7 @@ func SegmentMaxBytes(val int64) StreamOption {
 }
 
 // SegmentMaxAge set the value of segment.max.age configuration for stream
-func SegmentMaxAge(val time.Duration) StreamOption {
+func SegmentMaxAge(val int64) StreamOption {
 	return func(o *StreamOptions) error {
 		o.SegmentMaxAge = val
 		return nil
@@ -505,10 +505,10 @@ func (c *client) CreateStream(ctx context.Context, subject, name string, options
 		Partitions:           opts.Partitions,
 		RetentionMaxBytes:    opts.RetentionMaxBytes,
 		RetentionMaxMessages: opts.RetentionMaxMessages,
-		RetentionMaxAge:      opts.RetentionMaxAge.Minutes(),
-		CleanerInterval:      opts.CleanerInterval.Minutes(),
+		RetentionMaxAge:      opts.RetentionMaxAge,
+		CleanerInterval:      opts.CleanerInterval,
 		SegmentMaxBytes:      opts.SegmentMaxBytes,
-		SegmentMaxAge:        opts.SegmentMaxAge.Minutes(),
+		SegmentMaxAge:        opts.SegmentMaxAge,
 		CompactMaxGoroutines: opts.CompactMaxGoroutines,
 	}
 	err := c.doResilientRPC(func(client proto.APIClient) error {
