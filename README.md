@@ -94,8 +94,9 @@ client.CreateStream(context.Background(), "foo.*", "my-stream", lift.MaxReplicat
 // Create a stream attached to the NATS subject "foo.*" that is replicated to
 // all the brokers in the cluster. ErrStreamExists is returned if a stream with
 // the given name already exists.
-// This also set the retention.max.age for the created stream
-client.CreateStream(context.Background(), subject, name, lift.RetentionMaxAge(time.Nanosecond))
+// This also set the retention.max.age for the created stream, in this example
+// the message is retained for 1 hour (3600000 millisecond)
+client.CreateStream(context.Background(), subject, name, lift.RetentionMaxAge(3600000))
 
 // Create a stream attached to the NATS subject "foo.*" that is replicated to
 // all the brokers in the cluster. ErrStreamExists is returned if a stream with
