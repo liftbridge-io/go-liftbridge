@@ -37,6 +37,13 @@ func (s StartPosition) toProto() proto.StartPosition {
 	return proto.StartPosition(s)
 }
 
+// CompactEnabled controls the activation of stream log compaction
+type CompactEnabled int32
+
+func (c CompactEnabled) toProto() proto.CompactEnabled {
+	return proto.CompactEnabled(c)
+}
+
 const (
 	defaultMaxConnsPerBroker   = 2
 	defaultKeepAliveTime       = 30 * time.Second
@@ -110,6 +117,8 @@ type StreamOptions struct {
 	// The maximum number of concurrent goroutines to use for compaction on a stream log (only applicable
 	// if compact.enabled is true).
 	CompactMaxGoroutines int64
+	// CompactEnabled controls the activation of stream log compaction
+	CompactEnabled CompactEnabled
 }
 
 // StreamOption is a function on the StreamOptions for a stream. These are used
@@ -217,6 +226,22 @@ func SegmentMaxAge(val int64) StreamOption {
 func CompactMaxGoroutines(val int64) StreamOption {
 	return func(o *StreamOptions) error {
 		o.CompactMaxGoroutines = val
+		return nil
+	}
+}
+
+// EnableCompact set the value of compact.enabled configuration for stream to TRUE
+func EnableCompact() StreamOption {
+	return func(o *StreamOptions) error {
+		o.CompactEnabled = CompactEnabled(proto.CompactEnabled_ENABLED)
+		return nil
+	}
+}
+
+// DisableCompact set the value of compact.enabled configuration for stream to False
+func DisableCompact() StreamOption {
+	return func(o *StreamOptions) error {
+		o.CompactEnabled = CompactEnabled(proto.CompactEnabled_DISABLED)
 		return nil
 	}
 }
@@ -510,6 +535,7 @@ func (c *client) CreateStream(ctx context.Context, subject, name string, options
 		SegmentMaxBytes:      opts.SegmentMaxBytes,
 		SegmentMaxAge:        opts.SegmentMaxAge,
 		CompactMaxGoroutines: opts.CompactMaxGoroutines,
+		CompactEnabled:       opts.CompactEnabled.toProto(),
 	}
 	err := c.doResilientRPC(func(client proto.APIClient) error {
 		_, err := client.CreateStream(ctx, req)

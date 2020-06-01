@@ -42,6 +42,8 @@ func (a AckPolicy) toProto() proto.AckPolicy {
 	return proto.AckPolicy(a)
 }
 
+// CompactEnabled controls stream compaction configuration
+
 // Message received from a Liftbridge stream.
 type Message struct {
 	offset       int64

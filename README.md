@@ -103,6 +103,22 @@ client.CreateStream(context.Background(), subject, name, lift.RetentionMaxAge(ti
 // This also set the retention.max.messages for the created stream
 client.CreateStream(context.Background(), subject, name, lift.RetentionMaxMessages(2000))
 
+// Create a stream attached to the NATS subject "foo.*" that is replicated to
+// all the brokers in the cluster. ErrStreamExists is returned if a stream with
+// the given name already exists.
+// This also set the compact.enabled to be
+// activated to inform server that compaction
+// should be enabled
+client.CreateStream(context.Background(), subject, name, lift.EnableCompact())
+
+// Create a stream attached to the NATS subject "foo.*" that is replicated to
+// all the brokers in the cluster. ErrStreamExists is returned if a stream with
+// the given name already exists.
+// This also set the compact.enabled to be
+// activated to inform server that compaction
+// should be disabled
+client.CreateStream(context.Background(), subject, name, lift.DisableCompact())
+
 ```
 
 ### Subscription Start/Replay Options
