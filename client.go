@@ -84,6 +84,7 @@ type AckHandler func(ack *Ack, err error)
 
 // ackContext tracks state for an in-flight message expecting an ack.
 type ackContext struct {
+	sync.RWMutex
 	handler AckHandler
 	timer   *time.Timer
 }
@@ -781,6 +782,7 @@ func (c *client) publishAsync(ctx context.Context, stream string, value []byte,
 		if ok {
 			timeout = time.Until(deadline)
 		}
+		ack.Lock()
 		ack.timer = time.AfterFunc(timeout, func() {
 			ackCtx := c.removeAckContext(req.CorrelationId)
 			// Ack was processed before timeout finished.
@@ -791,6 +793,7 @@ func (c *client) publishAsync(ctx context.Context, stream string, value []byte,
 				ackCtx.handler(nil, ErrAckTimeout)
 			}
 		})
+		ack.Unlock()
 	}
 
 	return nil
@@ -846,7 +849,9 @@ func (c *client) removeAckContext(cid string) *ackContext {
 	c.mu.Lock()
 	ctx := c.ackContexts[cid]
 	if ctx != nil {
+		ctx.RLock()
 		timer = ctx.timer
+		ctx.RUnlock()
 		delete(c.ackContexts, cid)
 	}
 	c.mu.Unlock()
