@@ -37,13 +37,6 @@ func (s StartPosition) toProto() proto.StartPosition {
 	return proto.StartPosition(s)
 }
 
-// CompactEnabled controls the activation of stream log compaction
-type CompactEnabled int32
-
-func (c CompactEnabled) toProto() proto.CompactEnabled {
-	return proto.CompactEnabled(c)
-}
-
 const (
 	defaultMaxConnsPerBroker   = 2
 	defaultKeepAliveTime       = 30 * time.Second
@@ -98,10 +91,10 @@ type StreamOptions struct {
 
 	// The maximum size a stream's log can grow to, in bytes, before we will discard
 	// old log segments to free up space. A value of 0 indicates no limit.
-	RetentionMaxBytes int64
+	RetentionMaxBytes *proto.RetentionMaxBytes
 	// The maximum size a stream's log can grow to, in number of messages, before we will discard
 	// old log segments to free up space. A value of 0 indicates no limit.
-	RetentionMaxMessages int64
+	RetentionMaxMessages *proto.RetentionMaxMessages
 	// The TTL for stream log segment files, after which they are deleted. A value of 0 indicates no TTL.
 	RetentionMaxAge int64
 	// The frequency to check if a new stream log segment file should be rolled and whether any segments are
@@ -116,9 +109,9 @@ type StreamOptions struct {
 	SegmentMaxAge int64
 	// The maximum number of concurrent goroutines to use for compaction on a stream log (only applicable
 	// if compact.enabled is true).
-	CompactMaxGoroutines int64
+	CompactMaxGoroutines int32
 	// CompactEnabled controls the activation of stream log compaction
-	CompactEnabled CompactEnabled
+	CompactEnabled *proto.CompactEnabled
 }
 
 // StreamOption is a function on the StreamOptions for a stream. These are used
@@ -177,7 +170,7 @@ func Partitions(partitions int32) StreamOption {
 // RetentionMaxBytes set the value of retention.max.bytes configuration for stream
 func RetentionMaxBytes(val int64) StreamOption {
 	return func(o *StreamOptions) error {
-		o.RetentionMaxBytes = val
+		o.RetentionMaxBytes = &proto.RetentionMaxBytes{Value: val}
 		return nil
 	}
 }
@@ -185,7 +178,7 @@ func RetentionMaxBytes(val int64) StreamOption {
 // RetentionMaxMessages set the value of retention.max.messages configuration for stream
 func RetentionMaxMessages(val int64) StreamOption {
 	return func(o *StreamOptions) error {
-		o.RetentionMaxMessages = val
+		o.RetentionMaxMessages = &proto.RetentionMaxMessages{Value: val}
 		return nil
 	}
 }
@@ -223,7 +216,7 @@ func SegmentMaxAge(val int64) StreamOption {
 }
 
 // CompactMaxGoroutines set the value of compact.max.goroutines configuration for stream
-func CompactMaxGoroutines(val int64) StreamOption {
+func CompactMaxGoroutines(val int32) StreamOption {
 	return func(o *StreamOptions) error {
 		o.CompactMaxGoroutines = val
 		return nil
@@ -233,7 +226,7 @@ func CompactMaxGoroutines(val int64) StreamOption {
 // EnableCompact set the value of compact.enabled configuration for stream to TRUE
 func EnableCompact() StreamOption {
 	return func(o *StreamOptions) error {
-		o.CompactEnabled = CompactEnabled(proto.CompactEnabled_ENABLED)
+		o.CompactEnabled = &proto.CompactEnabled{Value: true}
 		return nil
 	}
 }
@@ -241,7 +234,7 @@ func EnableCompact() StreamOption {
 // DisableCompact set the value of compact.enabled configuration for stream to False
 func DisableCompact() StreamOption {
 	return func(o *StreamOptions) error {
-		o.CompactEnabled = CompactEnabled(proto.CompactEnabled_DISABLED)
+		o.CompactEnabled = &proto.CompactEnabled{Value: false}
 		return nil
 	}
 }
@@ -528,15 +521,23 @@ func (c *client) CreateStream(ctx context.Context, subject, name string, options
 		ReplicationFactor:    opts.ReplicationFactor,
 		Group:                opts.Group,
 		Partitions:           opts.Partitions,
-		RetentionMaxBytes:    opts.RetentionMaxBytes,
-		RetentionMaxMessages: opts.RetentionMaxMessages,
 		RetentionMaxAge:      opts.RetentionMaxAge,
 		CleanerInterval:      opts.CleanerInterval,
 		SegmentMaxBytes:      opts.SegmentMaxBytes,
 		SegmentMaxAge:        opts.SegmentMaxAge,
 		CompactMaxGoroutines: opts.CompactMaxGoroutines,
-		CompactEnabled:       opts.CompactEnabled.toProto(),
 	}
+
+	if opts.RetentionMaxBytes != nil {
+		req.RetentionMaxBytes = opts.RetentionMaxBytes
+	}
+	if opts.RetentionMaxMessages != nil {
+		req.RetentionMaxMessages = opts.RetentionMaxMessages
+	}
+	if opts.CompactEnabled != nil {
+		req.CompactEnabled = opts.CompactEnabled
+	}
+
 	err := c.doResilientRPC(func(client proto.APIClient) error {
 		_, err := client.CreateStream(ctx, req)
 		return err
