@@ -91,82 +91,13 @@ in the same group, messages will be balanced among them.
 // the given name already exists.
 client.CreateStream(context.Background(), "foo.*", "my-stream", lift.MaxReplication())
 
-// Create a stream attached to the NATS subject "foo.*" that is replicated to
-// all the brokers in the cluster. ErrStreamExists is returned if a stream with
-// the given name already exists.
-// This also set the retention.max.bytes for the created stream, in this example
-// the message is retained for 134217728 bytes  (128Mb)
-client.CreateStream(context.Background(), subject, name, lift.RetentionMaxBytes(134217728))
+We can also configure different properties of the stream with options, which
+allow overriding the server settings.
 
-// Create a stream attached to the NATS subject "foo.*" that is replicated to
-// all the brokers in the cluster. ErrStreamExists is returned if a stream with
-// the given name already exists.
-// This also set the retention.max.age for the created stream, in this example
-// the message is retained for 1 hour
-customDuration, _ := time.ParseDuration("1h")
-client.CreateStream(context.Background(), subject, name, lift.RetentionMaxAge(customDuration))
-
-// Create a stream attached to the NATS subject "foo.*" that is replicated to
-// all the brokers in the cluster. ErrStreamExists is returned if a stream with
-// the given name already exists.
-// This also set the retention.max.messages for the created stream, in this example
-// the message is retained for 1000
-client.CreateStream(context.Background(), subject, name, lift.RetentionMaxMessages(1000))
-
-// Create a stream attached to the NATS subject "foo.*" that is replicated to
-// all the brokers in the cluster. ErrStreamExists is returned if a stream with
-// the given name already exists.
-// This also set the cleaner.interval for the created stream, in this example
-// the message is retained for 1 minute.
-customDuration, _ := time.ParseDuration("1m")
-client.CreateStream(context.Background(), subject, name, lift.CleanerInterval(customDuration))
-
-// Create a stream attached to the NATS subject "foo.*" that is replicated to
-// all the brokers in the cluster. ErrStreamExists is returned if a stream with
-// the given name already exists.
-// This also set the segment.max.bytes for the created stream, in this example
-// the message is retained for 134217728 bytes  (128Mb)
-client.CreateStream(context.Background(), subject, name, lift.SegmentMaxBytes(134217728))
-
-// Create a stream attached to the NATS subject "foo.*" that is replicated to
-// all the brokers in the cluster. ErrStreamExists is returned if a stream with
-// the given name already exists.
-// This also set the segment.max.age for the created stream, in this example
-// the message is retained for 30min
-customDuration, _ := time.ParseDuration("30m")
-client.CreateStream(context.Background(), subject, name, lift.SegmentMaxAge(customDuration))
-
-// Create a stream attached to the NATS subject "foo.*" that is replicated to
-// all the brokers in the cluster. ErrStreamExists is returned if a stream with
-// the given name already exists.
-// This also set the retention.max.messages for the created stream , in this case,
-// to 2000 messages
-client.CreateStream(context.Background(), subject, name, lift.RetentionMaxMessages(2000))
-
-
-// Create a stream attached to the NATS subject "foo.*" that is replicated to
-// all the brokers in the cluster. ErrStreamExists is returned if a stream with
-// the given name already exists.
-// This also set the compact.max.goroutines for the created stream.
-client.CreateStream(context.Background(), subject, name, lift.CompactMaxGoroutines(5))
-
-
-// Create a stream attached to the NATS subject "foo.*" that is replicated to
-// all the brokers in the cluster. ErrStreamExists is returned if a stream with
-// the given name already exists.
-// This also set the compact.enabled to be
-// activated to inform server that compaction
-// should be enabled
-client.CreateStream(context.Background(), subject, name, lift.SetCompactEnabled(true))
-
-// Create a stream attached to the NATS subject "foo.*" that is replicated to
-// all the brokers in the cluster. ErrStreamExists is returned if a stream with
-// the given name already exists.
-// This also set the compact.enabled to be
-// activated to inform server that compaction
-// should be disabled
-client.CreateStream(context.Background(), subject, name, lift.SetCompactEnabled(false))
-
+// Create a stream and set the rentention to 134217728 bytes (128MB) and enable
+// stream compaction.
+client.CreateStream(context.Background(), subject, name,
+    lift.RetentionMaxBytes(134217728), lift.CompactEnabled(true))
 ```
 
 ### Subscription Start/Replay Options
