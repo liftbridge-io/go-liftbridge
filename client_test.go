@@ -6,12 +6,11 @@ import (
 	"testing"
 	"time"
 
+	proto "github.com/liftbridge-io/liftbridge-api/go"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	proto "github.com/liftbridge-io/liftbridge-api/go"
 )
 
 func TestUnmarshalAck(t *testing.T) {
@@ -1107,6 +1106,51 @@ func TestResubscribeFail(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Did not receive expected error")
 	}
+}
+
+func TestStreamOptionsNewRequest(t *testing.T) {
+	var (
+		retentionMaxBytes    = int64(1024)
+		retentionMaxMessages = int64(10)
+		retentionMaxAge      = time.Hour
+		cleanerInterval      = time.Minute
+		segmentMaxBytes      = int64(512)
+		segmentMaxAge        = time.Minute
+		compactMaxGoroutines = int32(5)
+		compactEnabled       = true
+	)
+	options := []StreamOption{
+		Group("foo"),
+		ReplicationFactor(2),
+		Partitions(3),
+		RetentionMaxBytes(retentionMaxBytes),
+		RetentionMaxMessages(retentionMaxMessages),
+		RetentionMaxAge(retentionMaxAge),
+		CleanerInterval(cleanerInterval),
+		SegmentMaxBytes(segmentMaxBytes),
+		SegmentMaxAge(segmentMaxAge),
+		CompactMaxGoroutines(compactMaxGoroutines),
+		CompactEnabled(compactEnabled),
+	}
+
+	opts := &StreamOptions{}
+	for _, opt := range options {
+		require.NoError(t, opt(opts))
+	}
+
+	req := opts.newRequest("foo", "bar")
+
+	require.Equal(t, "foo", req.Group)
+	require.Equal(t, int32(2), req.ReplicationFactor)
+	require.Equal(t, int32(3), req.Partitions)
+	require.Equal(t, retentionMaxBytes, req.RetentionMaxBytes.Value)
+	require.Equal(t, retentionMaxMessages, req.RetentionMaxMessages.Value)
+	require.Equal(t, retentionMaxAge.Milliseconds(), req.RetentionMaxAge.Value)
+	require.Equal(t, cleanerInterval.Milliseconds(), req.CleanerInterval.Value)
+	require.Equal(t, segmentMaxBytes, req.SegmentMaxBytes.Value)
+	require.Equal(t, segmentMaxAge.Milliseconds(), req.SegmentMaxAge.Value)
+	require.Equal(t, compactMaxGoroutines, req.CompactMaxGoroutines.Value)
+	require.Equal(t, compactEnabled, req.CompactEnabled.Value)
 }
 
 func ExampleConnect() {
