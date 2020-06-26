@@ -223,8 +223,8 @@ func CompactMaxGoroutines(val int32) StreamOption {
 	}
 }
 
-// SetCompactEnabled set the value of compact.enabled configuration for stream.
-func SetCompactEnabled(val bool) StreamOption {
+// CompactEnabled sets the value of compact.enabled configuration for stream.
+func CompactEnabled(val bool) StreamOption {
 	return func(o *StreamOptions) error {
 		o.CompactEnabled = &proto.NullableBool{Value: val}
 		return nil
