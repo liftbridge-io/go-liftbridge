@@ -13,10 +13,12 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand"
 	"sync"
 	"time"
 
+	"github.com/nats-io/nuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -41,6 +43,7 @@ const (
 	defaultMaxConnsPerBroker   = 2
 	defaultKeepAliveTime       = 30 * time.Second
 	defaultResubscribeWaitTime = 30 * time.Second
+	defaultAckWaitTime         = 5 * time.Second
 )
 
 var (
@@ -63,12 +66,27 @@ var (
 	// ErrPartitionPaused is sent to subscribers when the stream partition they
 	// are subscribed to has been paused.
 	ErrPartitionPaused = errors.New("stream partition has been paused")
+
+	// ErrAckTimeout indicates a publish ack was not received in time.
+	ErrAckTimeout = errors.New("publish ack timeout")
 )
 
 // Handler is the callback invoked by Subscribe when a message is received on
 // the specified stream. If err is not nil, the subscription will be terminated
 // and no more messages will be received.
 type Handler func(msg *Message, err error)
+
+// AckHandler is used to handle the results of asynchronous publishes to a
+// stream. If the AckPolicy on the published message is not NONE, the handler
+// will receive the ack once it's received from the cluster or an error if the
+// message was not received successfully.
+type AckHandler func(ack *Ack, err error)
+
+// ackContext tracks state for an in-flight message expecting an ack.
+type ackContext struct {
+	handler AckHandler
+	timer   *time.Timer
+}
 
 // StreamOptions are used to configure new streams.
 type StreamOptions struct {
@@ -356,12 +374,14 @@ type Client interface {
 	// To publish directly to a specific NATS subject, use the low-level
 	// PublishToSubject API.
 	//
-	// If the AckPolicy is not NONE and a deadline is provided, this will
-	// synchronously block until the ack is received. If the ack is not
-	// received in time, a DeadlineExceeded status code is returned. If an
-	// AckPolicy and deadline are configured, this returns the Ack on success,
-	// otherwise it returns nil.
+	// If the AckPolicy is not NONE, this will synchronously block until the
+	// ack is received. If the ack is not received in time, ErrAckTimeout is
+	// returned. If AckPolicy is NONE, this returns nil on success.
 	Publish(ctx context.Context, stream string, value []byte, opts ...MessageOption) (*Ack, error)
+
+	// PublishAsync publishes a new message to the Liftbridge stream and
+	// asynchronously processes the ack or error for the message.
+	PublishAsync(ctx context.Context, stream string, value []byte, ackHandler AckHandler, opts ...MessageOption) error
 
 	// PublishToSubject publishes a new message to the NATS subject. Note that
 	// because this publishes directly to a subject, there may be multiple (or
@@ -371,9 +391,9 @@ type Client interface {
 	//
 	// If the AckPolicy is not NONE and a deadline is provided, this will
 	// synchronously block until the first ack is received. If an ack is not
-	// received in time, a DeadlineExceeded status code is returned. If an
-	// AckPolicy and deadline are configured, this returns the first Ack on
-	// success, otherwise it returns nil.
+	// received in time, ErrAckTimeout is returned. If an AckPolicy and
+	// deadline are configured, this returns the first Ack on success,
+	// otherwise it returns nil.
 	PublishToSubject(ctx context.Context, subject string, value []byte, opts ...MessageOption) (*Ack, error)
 
 	// FetchMetadata returns cluster metadata including broker and stream
@@ -385,14 +405,16 @@ type Client interface {
 // for each broker in the cluster, limiting the number of connections and
 // closing them when they go unused for a prolonged period of time.
 type client struct {
-	mu        sync.RWMutex
-	apiClient proto.APIClient
-	conn      *grpc.ClientConn
-	metadata  *metadataCache
-	pools     map[string]*connPool
-	opts      ClientOptions
-	dialOpts  []grpc.DialOption
-	closed    bool
+	mu          sync.RWMutex
+	conn        *conn
+	asyncConn   *conn
+	asyncStream proto.API_PublishAsyncClient
+	ackContexts map[string]*ackContext
+	metadata    *metadataCache
+	pools       map[string]*connPool
+	opts        ClientOptions
+	dialOpts    []grpc.DialOption
+	closed      chan struct{}
 }
 
 // ClientOptions are used to control the Client configuration.
@@ -425,6 +447,12 @@ type ClientOptions struct {
 	// failed over. This failover can take several moments, so this option
 	// gives the client time to retry. The default is 30 seconds.
 	ResubscribeWaitTime time.Duration
+
+	// AckWaitTime is the default amount of time to wait for an ack to be
+	// received for a published message before ErrAckTimeout is returned. This
+	// can be overridden on individual requests by setting a timeout on the
+	// Context. This defaults to 5 seconds if not set.
+	AckWaitTime time.Duration
 }
 
 // Connect will attempt to connect to a Liftbridge server with multiple
@@ -433,12 +461,8 @@ func (o ClientOptions) Connect() (Client, error) {
 	if len(o.Brokers) == 0 {
 		return nil, errors.New("no addresses provided")
 	}
-	var (
-		conn *grpc.ClientConn
-		err  error
-		opts = []grpc.DialOption{}
-	)
 
+	opts := []grpc.DialOption{}
 	if o.TLSConfig != nil {
 		// Setup TLS configuration if it is provided.
 		creds := credentials.NewTLS(o.TLSConfig)
@@ -455,29 +479,39 @@ func (o ClientOptions) Connect() (Client, error) {
 		opts = append(opts, grpc.WithInsecure())
 	}
 
-	perm := rand.Perm(len(o.Brokers))
-	for _, i := range perm {
-		addr := o.Brokers[i]
-		conn, err = grpc.Dial(addr, opts...)
-		if err == nil {
-			break
-		}
+	conn, err := dialBroker(o.Brokers, opts)
+	if err != nil {
+		return nil, err
 	}
-	if conn == nil {
+
+	asyncConn, err := dialBroker(o.Brokers, opts)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	asyncStream, err := asyncConn.PublishAsync(context.Background())
+	if err != nil {
+		conn.Close()
+		asyncConn.Close()
 		return nil, err
 	}
 
 	c := &client{
-		conn:      conn,
-		apiClient: proto.NewAPIClient(conn),
-		pools:     make(map[string]*connPool),
-		opts:      o,
-		dialOpts:  opts,
+		conn:        conn,
+		asyncConn:   asyncConn,
+		asyncStream: asyncStream,
+		pools:       make(map[string]*connPool),
+		opts:        o,
+		dialOpts:    opts,
+		ackContexts: make(map[string]*ackContext),
+		closed:      make(chan struct{}),
 	}
 	c.metadata = newMetadataCache(o.Brokers, c.doResilientRPC)
 	if _, err := c.metadata.update(context.Background()); err != nil {
 		return nil, err
 	}
+	go c.dispatchAcks()
 	return c, nil
 }
 
@@ -488,6 +522,7 @@ func DefaultClientOptions() ClientOptions {
 		MaxConnsPerBroker:   defaultMaxConnsPerBroker,
 		KeepAliveTime:       defaultKeepAliveTime,
 		ResubscribeWaitTime: defaultResubscribeWaitTime,
+		AckWaitTime:         defaultAckWaitTime,
 	}
 }
 
@@ -544,6 +579,17 @@ func ResubscribeWaitTime(wait time.Duration) ClientOption {
 	}
 }
 
+// AckWaitTime is a ClientOption to set the default amount of time to wait for
+// an ack to be received for a published message before ErrAckTimeout is
+// returned. This can be overridden on individual requests by setting a timeout
+// on the Context. This defaults to 5 seconds if not set.
+func AckWaitTime(wait time.Duration) ClientOption {
+	return func(o *ClientOptions) error {
+		o.AckWaitTime = wait
+		return nil
+	}
+}
+
 // Connect creates a Client connection for the given Liftbridge cluster.
 // Multiple addresses can be provided. Connect will use whichever it connects
 // successfully to first in random order. The Client will use the pool of
@@ -565,8 +611,10 @@ func Connect(addrs []string, options ...ClientOption) (Client, error) {
 func (c *client) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.closed {
+	select {
+	case <-c.closed:
 		return nil
+	default:
 	}
 	for _, pool := range c.pools {
 		if err := pool.close(); err != nil {
@@ -576,8 +624,17 @@ func (c *client) Close() error {
 	if err := c.conn.Close(); err != nil {
 		return err
 	}
-	c.closed = true
+	close(c.closed)
 	return nil
+}
+
+func (c *client) isClosed() bool {
+	select {
+	case <-c.closed:
+		return true
+	default:
+		return false
+	}
 }
 
 // CreateStream creates a new stream attached to a NATS subject. Subject is the
@@ -804,11 +861,9 @@ func (c *client) Subscribe(ctx context.Context, streamName string, handler Handl
 // underlying NATS subject that gets published to.  To publish directly to a
 // spedcific NATS subject, use the low-level PublishToSubject API.
 //
-// If the AckPolicy is not NONE and a deadline is provided, this will
-// synchronously block until the ack is received. If the ack is not received in
-// time, a DeadlineExceeded status code is returned. If an AckPolicy and
-// deadline are configured, this returns the Ack on success, otherwise it
-// returns nil.
+// If the AckPolicy is not NONE, this will synchronously block until the ack is
+// received. If the ack is not received in time, ErrAckTimeout is returned. If
+// AckPolicy is NONE, this returns nil on success.
 func (c *client) Publish(ctx context.Context, stream string, value []byte,
 	options ...MessageOption) (*Ack, error) {
 
@@ -817,31 +872,94 @@ func (c *client) Publish(ctx context.Context, stream string, value []byte,
 		opt(opts)
 	}
 
-	// Determine which partition to publish to.
-	partition, err := c.partition(ctx, stream, opts.Key, value, opts)
+	if opts.AckPolicy == AckPolicy(proto.AckPolicy_NONE) {
+		// Fire and forget.
+		err := c.publishAsync(ctx, stream, value, nil, opts)
+		return nil, err
+	}
+
+	// Publish and wait for ack.
+	var (
+		ackCh   = make(chan *Ack, 1)
+		errorCh = make(chan error, 1)
+	)
+	err := c.publishAsync(ctx, stream, value, func(ack *Ack, err error) {
+		if err != nil {
+			errorCh <- err
+			return
+		}
+		ackCh <- ack
+	}, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	req := &proto.PublishRequest{
-		Stream:        stream,
-		Partition:     partition,
-		Key:           opts.Key,
-		Value:         value,
-		AckInbox:      opts.AckInbox,
-		CorrelationId: opts.CorrelationID,
-		AckPolicy:     opts.AckPolicy.toProto(),
+	select {
+	case ack := <-ackCh:
+		return ack, nil
+	case err := <-errorCh:
+		return nil, err
+	}
+}
+
+// PublishAsync publishes a new message to the Liftbridge stream and
+// asynchronously processes the ack or error for the message.
+func (c *client) PublishAsync(ctx context.Context, stream string, value []byte,
+	ackHandler AckHandler, options ...MessageOption) error {
+
+	opts := &MessageOptions{Headers: make(map[string][]byte)}
+	for _, opt := range options {
+		opt(opts)
+	}
+	return c.publishAsync(ctx, stream, value, ackHandler, opts)
+}
+
+func (c *client) publishAsync(ctx context.Context, stream string, value []byte,
+	ackHandler AckHandler, opts *MessageOptions) error {
+
+	if opts.CorrelationID == "" {
+		opts.CorrelationID = nuid.Next()
 	}
 
-	var ack *proto.Ack
-	err = c.doResilientRPC(func(client proto.APIClient) error {
-		resp, err := client.Publish(ctx, req)
-		if err == nil {
-			ack = resp.Ack
-		}
+	req, err := c.newPublishRequest(ctx, stream, value, opts)
+	if err != nil {
 		return err
-	})
-	return ackFromProto(ack), err
+	}
+
+	c.mu.Lock()
+	asyncStream := c.asyncStream
+	if ackHandler != nil {
+		// Setup ack timeout.
+		var (
+			timeout      = c.opts.AckWaitTime
+			deadline, ok = ctx.Deadline()
+		)
+		if ok {
+			timeout = time.Until(deadline)
+		}
+		ack := &ackContext{
+			handler: ackHandler,
+			timer: time.AfterFunc(timeout, func() {
+				ackCtx := c.removeAckContext(req.CorrelationId)
+				// Ack was processed before timeout finished.
+				if ackCtx == nil {
+					return
+				}
+				if ackCtx.handler != nil {
+					ackCtx.handler(nil, ErrAckTimeout)
+				}
+			}),
+		}
+		c.ackContexts[req.CorrelationId] = ack
+	}
+	c.mu.Unlock()
+
+	if err := asyncStream.Send(req); err != nil {
+		c.removeAckContext(req.CorrelationId)
+		return err
+	}
+
+	return nil
 }
 
 // PublishToSubject publishes a new message to the NATS subject. Note that
@@ -852,9 +970,9 @@ func (c *client) Publish(ctx context.Context, stream string, value []byte,
 //
 // If the AckPolicy is not NONE and a deadline is provided, this will
 // synchronously block until the first ack is received. If an ack is not
-// received in time, a DeadlineExceeded status code is returned. If an
-// AckPolicy and deadline are configured, this returns the first Ack on
-// success, otherwise it returns nil.
+// received in time, ErrAckTimeout is returned. If an AckPolicy and deadline
+// are configured, this returns the first Ack on success, otherwise it returns
+// nil.
 func (c *client) PublishToSubject(ctx context.Context, subject string, value []byte,
 	options ...MessageOption) (*Ack, error) {
 
@@ -872,6 +990,16 @@ func (c *client) PublishToSubject(ctx context.Context, subject string, value []b
 		AckPolicy:     opts.AckPolicy.toProto(),
 	}
 
+	// Setup ack timeout.
+	var (
+		cancel func()
+		_, ok  = ctx.Deadline()
+	)
+	if !ok {
+		ctx, cancel = context.WithTimeout(ctx, c.opts.AckWaitTime)
+		defer cancel()
+	}
+
 	var ack *proto.Ack
 	err := c.doResilientRPC(func(client proto.APIClient) error {
 		resp, err := client.PublishToSubject(ctx, req)
@@ -880,6 +1008,9 @@ func (c *client) PublishToSubject(ctx context.Context, subject string, value []b
 		}
 		return err
 	})
+	if status.Code(err) == codes.DeadlineExceeded {
+		err = ErrAckTimeout
+	}
 	return ackFromProto(ack), err
 }
 
@@ -887,6 +1018,89 @@ func (c *client) PublishToSubject(ctx context.Context, subject string, value []b
 // information.
 func (c *client) FetchMetadata(ctx context.Context) (*Metadata, error) {
 	return c.metadata.update(ctx)
+}
+
+func (c *client) removeAckContext(cid string) *ackContext {
+	var timer *time.Timer
+	c.mu.Lock()
+	ctx := c.ackContexts[cid]
+	if ctx != nil {
+		timer = ctx.timer
+		delete(c.ackContexts, cid)
+	}
+	c.mu.Unlock()
+	// Cancel ack timeout if any.
+	if timer != nil {
+		timer.Stop()
+	}
+	return ctx
+}
+
+func (c *client) dispatchAcks() {
+	c.mu.RLock()
+	asyncStream := c.asyncStream
+	c.mu.RUnlock()
+	for {
+		resp, err := asyncStream.Recv()
+		if err == io.EOF {
+			return
+		}
+		if err != nil {
+			stream, ok := c.newAsyncStream()
+			if !ok {
+				return
+			}
+			asyncStream = stream
+			c.mu.Lock()
+			c.asyncStream = stream
+			c.mu.Unlock()
+			continue
+		}
+
+		ctx := c.removeAckContext(resp.Ack.CorrelationId)
+		if ctx != nil && ctx.handler != nil {
+			ctx.handler(ackFromProto(resp.Ack), nil)
+		}
+	}
+}
+
+func (c *client) newAsyncStream() (stream proto.API_PublishAsyncClient, ok bool) {
+	for {
+		err := c.doResilientRPC(func(client proto.APIClient) error {
+			resp, err := client.PublishAsync(context.Background())
+			if err != nil {
+				return err
+			}
+			stream = resp
+			return nil
+		})
+		if err == nil {
+			return stream, true
+		}
+		if c.isClosed() {
+			return nil, false
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+func (c *client) newPublishRequest(ctx context.Context, stream string, value []byte,
+	opts *MessageOptions) (*proto.PublishRequest, error) {
+
+	// Determine which partition to publish to.
+	partition, err := c.partition(ctx, stream, opts.Key, value, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return &proto.PublishRequest{
+		Stream:        stream,
+		Partition:     partition,
+		Key:           opts.Key,
+		Value:         value,
+		AckInbox:      opts.AckInbox,
+		CorrelationId: opts.CorrelationID,
+		AckPolicy:     opts.AckPolicy.toProto(),
+	}, nil
 }
 
 // partition determines the partition ID to publish the message to. If a
@@ -928,7 +1142,7 @@ func (c *client) subscribe(ctx context.Context, stream string,
 	var (
 		pool *connPool
 		addr string
-		conn *grpc.ClientConn
+		conn *conn
 		st   proto.API_SubscribeClient
 		err  error
 	)
@@ -946,8 +1160,7 @@ func (c *client) subscribe(ctx context.Context, stream string,
 			continue
 		}
 		var (
-			client = proto.NewAPIClient(conn)
-			req    = &proto.SubscribeRequest{
+			req = &proto.SubscribeRequest{
 				Stream:         stream,
 				StartPosition:  opts.StartPosition.toProto(),
 				StartOffset:    opts.StartOffset,
@@ -956,7 +1169,7 @@ func (c *client) subscribe(ctx context.Context, stream string,
 				ReadISRReplica: opts.ReadISRReplica,
 			}
 		)
-		st, err = client.Subscribe(ctx, req)
+		st, err = conn.Subscribe(ctx, req)
 		if err != nil {
 			if status.Code(err) == codes.Unavailable {
 				time.Sleep(50 * time.Millisecond)
@@ -1017,7 +1230,7 @@ LOOP:
 				// at the last received offset unless the connection has been
 				// closed.
 				c.mu.RLock()
-				closed = c.closed
+				closed = c.isClosed()
 				c.mu.RUnlock()
 				if !closed {
 					resubscribe = true
@@ -1049,7 +1262,7 @@ LOOP:
 			}
 			time.Sleep(time.Second + (time.Duration(rand.Intn(500)) * time.Millisecond))
 			c.mu.RLock()
-			closed = c.closed
+			closed = c.isClosed()
 			c.mu.RUnlock()
 		}
 		handler(nil, lastError)
@@ -1057,10 +1270,14 @@ LOOP:
 }
 
 // connFactory returns a pool connFactory for the given address. The
-// connFactory dials the address to create a gRPC ClientConn.
+// connFactory dials the address to create a Liftbridge conn.
 func (c *client) connFactory(addr string) connFactory {
-	return func() (*grpc.ClientConn, error) {
-		return grpc.Dial(addr, c.dialOpts...)
+	return func() (*conn, error) {
+		grpcConn, err := grpc.Dial(addr, c.dialOpts...)
+		if err != nil {
+			return nil, err
+		}
+		return newConn(grpcConn), nil
 	}
 }
 
@@ -1085,19 +1302,17 @@ func (c *client) getPoolAndAddr(stream string, partition int32, readISRReplica b
 // to the broker being unavailable, cycling through the known broker list.
 func (c *client) doResilientRPC(rpc func(client proto.APIClient) error) (err error) {
 	c.mu.RLock()
-	client := c.apiClient
+	conn := c.conn
 	c.mu.RUnlock()
 
 	for i := 0; i < 10; i++ {
-		err = rpc(client)
+		err = rpc(conn)
 		if status.Code(err) == codes.Unavailable {
 			conn, err := c.dialBroker()
 			if err != nil {
 				return err
 			}
-			client = proto.NewAPIClient(conn)
 			c.mu.Lock()
-			c.apiClient = client
 			c.conn.Close()
 			c.conn = conn
 			c.mu.Unlock()
@@ -1109,22 +1324,27 @@ func (c *client) doResilientRPC(rpc func(client proto.APIClient) error) (err err
 }
 
 // dialBroker dials each broker in the cluster, in random order, returning a
-// gRPC ClientConn to the first one that is successful.
-func (c *client) dialBroker() (*grpc.ClientConn, error) {
+// Liftbridge conn for the first one that is successful.
+func (c *client) dialBroker() (*conn, error) {
+	return dialBroker(c.metadata.getAddrs(), c.dialOpts)
+}
+
+// dialBroker dials each broker in the list of addresses, in random order,
+// returning a Liftbridge conn for the first one that is successful.
+func dialBroker(addrs []string, opts []grpc.DialOption) (*conn, error) {
 	var (
-		conn  *grpc.ClientConn
-		err   error
-		addrs = c.metadata.getAddrs()
-		perm  = rand.Perm(len(addrs))
+		grpcConn *grpc.ClientConn
+		err      error
+		perm     = rand.Perm(len(addrs))
 	)
 	for _, i := range perm {
-		conn, err = grpc.Dial(addrs[i], c.dialOpts...)
+		grpcConn, err = grpc.Dial(addrs[i], opts...)
 		if err == nil {
 			break
 		}
 	}
-	if conn == nil {
+	if grpcConn == nil {
 		return nil, err
 	}
-	return conn, nil
+	return newConn(grpcConn), nil
 }
