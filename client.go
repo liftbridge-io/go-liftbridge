@@ -886,6 +886,7 @@ func (c *client) Publish(ctx context.Context, stream string, value []byte,
 	err := c.publishAsync(ctx, stream, value, func(ack *Ack, err error) {
 		if err != nil {
 			errorCh <- err
+			return
 		}
 		ackCh <- ack
 	}, opts)
