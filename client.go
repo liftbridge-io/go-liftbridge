@@ -990,6 +990,16 @@ func (c *client) PublishToSubject(ctx context.Context, subject string, value []b
 		AckPolicy:     opts.AckPolicy.toProto(),
 	}
 
+	// Setup ack timeout.
+	var (
+		cancel func()
+		_, ok  = ctx.Deadline()
+	)
+	if !ok {
+		ctx, cancel = context.WithTimeout(ctx, c.opts.AckWaitTime)
+		defer cancel()
+	}
+
 	var ack *proto.Ack
 	err := c.doResilientRPC(func(client proto.APIClient) error {
 		resp, err := client.PublishToSubject(ctx, req)
@@ -998,6 +1008,9 @@ func (c *client) PublishToSubject(ctx context.Context, subject string, value []b
 		}
 		return err
 	})
+	if status.Code(err) == codes.DeadlineExceeded {
+		err = ErrAckTimeout
+	}
 	return ackFromProto(ack), err
 }
 

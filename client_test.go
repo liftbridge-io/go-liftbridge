@@ -1102,6 +1102,23 @@ func TestPublishToSubject(t *testing.T) {
 	require.Equal(t, proto.AckPolicy_LEADER, req.AckPolicy)
 }
 
+func TestPublishToSubjectAckTimeout(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	server.SetupMockPublishToSubjectError(status.Error(codes.DeadlineExceeded, "deadline exceeded"))
+
+	_, err = client.PublishToSubject(context.Background(), "foo", []byte("hello"))
+	require.Equal(t, ErrAckTimeout, err)
+}
+
 func TestFetchMetadata(t *testing.T) {
 	server := newMockServer()
 	defer server.Stop(t)
