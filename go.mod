@@ -1,6 +1,10 @@
-module github.com/liftbridge-io/go-liftbridge
+module github.com/ably-forks/go-liftbridge
 
-go 1.13
+go 1.14
+
+replace github.com/liftbridge-io/liftbridge-api => github.com/ably-forks/liftbridge-api v1.9.0
+
+replace github.com/liftbridge-io/liftbridge => github.com/ably-forks/liftbridge v1.9.0
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
