@@ -6,12 +6,11 @@ import (
 	"testing"
 	"time"
 
+	proto "github.com/liftbridge-io/liftbridge-api/go"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	proto "github.com/liftbridge-io/liftbridge-api/go"
 )
 
 func TestUnmarshalAck(t *testing.T) {
@@ -792,7 +791,6 @@ func TestPublish(t *testing.T) {
 		MsgSubject:       "foo",
 		Offset:           0,
 		AckInbox:         "ack",
-		CorrelationId:    "123",
 		AckPolicy:        proto.AckPolicy_LEADER,
 	}
 
@@ -808,15 +806,148 @@ func TestPublish(t *testing.T) {
 	require.Equal(t, expectedAck.CorrelationId, ack.CorrelationID())
 	require.Equal(t, AckPolicy(expectedAck.AckPolicy), ack.AckPolicy())
 
-	req := server.GetPublishRequests()[0]
+	req := server.GetPublishAsyncRequests()[0]
 	require.Equal(t, []byte(nil), req.Key)
 	require.Equal(t, []byte("hello"), req.Value)
 	require.Equal(t, "foo", req.Stream)
 	require.Equal(t, int32(0), req.Partition)
 	require.Equal(t, map[string][]byte(nil), req.Headers)
 	require.Equal(t, "", req.AckInbox)
-	require.Equal(t, "", req.CorrelationId)
+	require.NotEqual(t, "", req.CorrelationId)
 	require.Equal(t, proto.AckPolicy_LEADER, req.AckPolicy)
+}
+
+func TestPublishAckPolicyNone(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	_, err = client.Publish(context.Background(), "foo", []byte("hello"), AckPolicyNone())
+	require.NoError(t, err)
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if len(server.GetPublishAsyncRequests()) == 0 {
+			continue
+		}
+		break
+	}
+
+	req := server.GetPublishAsyncRequests()[0]
+	require.Equal(t, []byte(nil), req.Key)
+	require.Equal(t, []byte("hello"), req.Value)
+	require.Equal(t, "foo", req.Stream)
+	require.Equal(t, int32(0), req.Partition)
+	require.Equal(t, map[string][]byte(nil), req.Headers)
+	require.Equal(t, "", req.AckInbox)
+	require.NotEqual(t, "", req.CorrelationId)
+	require.Equal(t, proto.AckPolicy_NONE, req.AckPolicy)
+}
+
+func TestPublishAckTimeout(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)},
+		AckWaitTime(time.Nanosecond))
+	require.NoError(t, err)
+	defer client.Close()
+
+	_, err = client.Publish(context.Background(), "foo", []byte("hello"))
+	require.Equal(t, ErrAckTimeout, err)
+}
+
+func TestPublishAsync(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	expectedAck := &proto.Ack{
+		Stream:           "foo",
+		PartitionSubject: "foo",
+		MsgSubject:       "foo",
+		Offset:           0,
+		AckInbox:         "ack",
+		AckPolicy:        proto.AckPolicy_LEADER,
+	}
+
+	server.SetupMockResponse(&proto.PublishResponse{Ack: expectedAck})
+
+	ackC := make(chan *Ack)
+	err = client.PublishAsync(context.Background(), "foo", []byte("hello"),
+		func(ack *Ack, err error) {
+			require.NoError(t, err)
+			ackC <- ack
+		},
+	)
+	require.NoError(t, err)
+
+	select {
+	case ack := <-ackC:
+		require.Equal(t, expectedAck.Stream, ack.Stream())
+		require.Equal(t, expectedAck.PartitionSubject, ack.PartitionSubject())
+		require.Equal(t, expectedAck.MsgSubject, ack.MessageSubject())
+		require.Equal(t, expectedAck.Offset, ack.Offset())
+		require.Equal(t, expectedAck.AckInbox, ack.AckInbox())
+		require.Equal(t, expectedAck.CorrelationId, ack.CorrelationID())
+		require.Equal(t, AckPolicy(expectedAck.AckPolicy), ack.AckPolicy())
+	case <-time.After(time.Second):
+		t.Fatal("Did not receive expected ack")
+	}
+
+	req := server.GetPublishAsyncRequests()[0]
+	require.Equal(t, []byte(nil), req.Key)
+	require.Equal(t, []byte("hello"), req.Value)
+	require.Equal(t, "foo", req.Stream)
+	require.Equal(t, int32(0), req.Partition)
+	require.Equal(t, map[string][]byte(nil), req.Headers)
+	require.Equal(t, "", req.AckInbox)
+	require.NotEqual(t, "", req.CorrelationId)
+	require.Equal(t, proto.AckPolicy_LEADER, req.AckPolicy)
+}
+
+func TestPublishAsyncAckTimeout(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	errorC := make(chan error)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer cancel()
+	err = client.PublishAsync(ctx, "foo", []byte("hello"),
+		func(ack *Ack, err error) {
+			errorC <- err
+		},
+	)
+	require.NoError(t, err)
+
+	select {
+	case err := <-errorC:
+		require.Equal(t, ErrAckTimeout, err)
+	case <-time.After(time.Second):
+		t.Fatal("Did not receive expected error")
+	}
 }
 
 func TestPublishToPartition(t *testing.T) {
@@ -854,14 +985,14 @@ func TestPublishToPartition(t *testing.T) {
 	require.Equal(t, expectedAck.CorrelationId, ack.CorrelationID())
 	require.Equal(t, AckPolicy(expectedAck.AckPolicy), ack.AckPolicy())
 
-	req := server.GetPublishRequests()[0]
+	req := server.GetPublishAsyncRequests()[0]
 	require.Equal(t, []byte("key"), req.Key)
 	require.Equal(t, []byte("hello"), req.Value)
 	require.Equal(t, "foo", req.Stream)
 	require.Equal(t, int32(1), req.Partition)
 	require.Equal(t, map[string][]byte(nil), req.Headers)
 	require.Equal(t, "", req.AckInbox)
-	require.Equal(t, "", req.CorrelationId)
+	require.NotEqual(t, "", req.CorrelationId)
 	require.Equal(t, proto.AckPolicy_ALL, req.AckPolicy)
 }
 
@@ -901,26 +1032,30 @@ func TestPublishRoundRobin(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	server.SetupMockResponse(&proto.PublishResponse{})
+	server.SetupMockResponse(&proto.PublishResponse{
+		Ack: &proto.Ack{},
+	})
 	_, err = client.Publish(context.Background(), "foo", []byte("hello"),
-		PartitionByRoundRobin(), AckPolicyNone())
+		PartitionByRoundRobin())
 	require.NoError(t, err)
 
-	server.SetupMockResponse(&proto.PublishResponse{})
+	server.SetupMockResponse(&proto.PublishResponse{
+		Ack: &proto.Ack{},
+	})
 	_, err = client.Publish(context.Background(), "foo", []byte("hello"),
-		PartitionByRoundRobin(), AckPolicyNone())
+		PartitionByRoundRobin())
 	require.NoError(t, err)
 
 	for i := 0; i < 2; i++ {
-		req := server.GetPublishRequests()[i]
+		req := server.GetPublishAsyncRequests()[i]
 		require.Equal(t, []byte(nil), req.Key)
 		require.Equal(t, []byte("hello"), req.Value)
 		require.Equal(t, "foo", req.Stream)
 		require.Equal(t, int32(i), req.Partition)
 		require.Equal(t, map[string][]byte(nil), req.Headers)
 		require.Equal(t, "", req.AckInbox)
-		require.Equal(t, "", req.CorrelationId)
-		require.Equal(t, proto.AckPolicy_NONE, req.AckPolicy)
+		require.NotEqual(t, "", req.CorrelationId)
+		require.Equal(t, proto.AckPolicy_LEADER, req.AckPolicy)
 	}
 }
 
@@ -965,6 +1100,23 @@ func TestPublishToSubject(t *testing.T) {
 	require.Equal(t, "", req.AckInbox)
 	require.Equal(t, "", req.CorrelationId)
 	require.Equal(t, proto.AckPolicy_LEADER, req.AckPolicy)
+}
+
+func TestPublishToSubjectAckTimeout(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	server.SetupMockPublishToSubjectError(status.Error(codes.DeadlineExceeded, "deadline exceeded"))
+
+	_, err = client.PublishToSubject(context.Background(), "foo", []byte("hello"))
+	require.Equal(t, ErrAckTimeout, err)
 }
 
 func TestFetchMetadata(t *testing.T) {
@@ -1107,6 +1259,51 @@ func TestResubscribeFail(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Did not receive expected error")
 	}
+}
+
+func TestStreamOptionsNewRequest(t *testing.T) {
+	var (
+		retentionMaxBytes    = int64(1024)
+		retentionMaxMessages = int64(10)
+		retentionMaxAge      = time.Hour
+		cleanerInterval      = time.Minute
+		segmentMaxBytes      = int64(512)
+		segmentMaxAge        = time.Minute
+		compactMaxGoroutines = int32(5)
+		compactEnabled       = true
+	)
+	options := []StreamOption{
+		Group("foo"),
+		ReplicationFactor(2),
+		Partitions(3),
+		RetentionMaxBytes(retentionMaxBytes),
+		RetentionMaxMessages(retentionMaxMessages),
+		RetentionMaxAge(retentionMaxAge),
+		CleanerInterval(cleanerInterval),
+		SegmentMaxBytes(segmentMaxBytes),
+		SegmentMaxAge(segmentMaxAge),
+		CompactMaxGoroutines(compactMaxGoroutines),
+		CompactEnabled(compactEnabled),
+	}
+
+	opts := &StreamOptions{}
+	for _, opt := range options {
+		require.NoError(t, opt(opts))
+	}
+
+	req := opts.newRequest("foo", "bar")
+
+	require.Equal(t, "foo", req.Group)
+	require.Equal(t, int32(2), req.ReplicationFactor)
+	require.Equal(t, int32(3), req.Partitions)
+	require.Equal(t, retentionMaxBytes, req.RetentionMaxBytes.Value)
+	require.Equal(t, retentionMaxMessages, req.RetentionMaxMessages.Value)
+	require.Equal(t, retentionMaxAge.Milliseconds(), req.RetentionMaxAge.Value)
+	require.Equal(t, cleanerInterval.Milliseconds(), req.CleanerInterval.Value)
+	require.Equal(t, segmentMaxBytes, req.SegmentMaxBytes.Value)
+	require.Equal(t, segmentMaxAge.Milliseconds(), req.SegmentMaxAge.Value)
+	require.Equal(t, compactMaxGoroutines, req.CompactMaxGoroutines.Value)
+	require.Equal(t, compactEnabled, req.CompactEnabled.Value)
 }
 
 func ExampleConnect() {
