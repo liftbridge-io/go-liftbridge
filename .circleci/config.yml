@@ -9,5 +9,4 @@ jobs:
       - checkout
       - run: sudo apt-get update -yqq && sudo apt-get install -yqq bzr
       - run: GO111MODULE=on go test -v ./... # Test v1
-      - run: cd v2
-      - run: GO111MODULE=on go test -v ./... # Test v2
+      - run: cd v2 && GO111MODULE=on go test -v ./... # Test v2
