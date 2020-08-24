@@ -111,7 +111,6 @@ func newMetadata(brokers map[string]*BrokerInfo, streams map[string]*StreamInfo)
 		brokers:     brokers,
 		addrs:       addrs,
 		streams:     streams,
-		paused:      partition.Paused,
 	}
 }
 
@@ -223,6 +222,7 @@ func (m *metadataCache) update(ctx context.Context) (*Metadata, error) {
 				leader:   brokers[partition.Leader],
 				replicas: replicas,
 				isr:      isr,
+				paused:   partition.Paused,
 			}
 		}
 		streams[stream.name] = stream
