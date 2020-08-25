@@ -10,7 +10,7 @@ import (
 	"time"
 
 	pb "github.com/golang/protobuf/proto"
-	"github.com/liftbridge-io/liftbridge-api/go"
+	proto "github.com/liftbridge-io/liftbridge-api/go"
 )
 
 var (
@@ -132,6 +132,7 @@ type Ack struct {
 	ackInbox         string
 	correlationID    string
 	ackPolicy        AckPolicy
+	timestamp        time.Time
 }
 
 func ackFromProto(wireAck *proto.Ack) *Ack {
@@ -146,6 +147,7 @@ func ackFromProto(wireAck *proto.Ack) *Ack {
 		ackInbox:         wireAck.GetAckInbox(),
 		correlationID:    wireAck.GetCorrelationId(),
 		ackPolicy:        AckPolicy(wireAck.GetAckPolicy()),
+		timestamp:        time.Unix(0, wireAck.GetTimestamp()),
 	}
 	return ack
 }
@@ -183,6 +185,11 @@ func (a *Ack) CorrelationID() string {
 // AckPolicy sent on the message.
 func (a *Ack) AckPolicy() AckPolicy {
 	return a.ackPolicy
+}
+
+// Timestamp is the timestamp the message was committed to.
+func (a *Ack) Timestamp() time.Time {
+	return a.timestamp
 }
 
 // Partitioner is used to map a message to a stream partition.
