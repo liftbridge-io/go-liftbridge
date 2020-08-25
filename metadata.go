@@ -145,9 +145,17 @@ func (m *Metadata) GetStream(name string) *StreamInfo {
 	return m.streams[name]
 }
 
-// Streams returns a map containing stream names and streams.
-func (m *Metadata) Streams() map[string]*StreamInfo {
-	return m.streams
+// Streams returns the list of known streams.
+func (m *Metadata) Streams() []*StreamInfo {
+	var (
+		streams = make([]*StreamInfo, len(m.streams))
+		i       = 0
+	)
+	for _, stream := range m.streams {
+		streams[i] = stream
+		i++
+	}
+	return streams
 }
 
 // PartitionCountForStream returns the number of partitions for the given
