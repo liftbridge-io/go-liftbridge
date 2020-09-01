@@ -333,6 +333,11 @@ func (m *mockAPI) Publish(ctx context.Context, in *proto.PublishRequest) (*proto
 	return resp.(*proto.PublishResponse), nil
 }
 
+func (m *mockAPI) PublishAsync(proto.API_PublishAsyncServer) error {
+	// Not implemented.
+	return nil
+}
+
 func (m *mockAPI) PublishToSubject(ctx context.Context, in *proto.PublishToSubjectRequest) (*proto.PublishToSubjectResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
