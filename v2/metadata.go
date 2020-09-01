@@ -122,26 +122,18 @@ func (m *Metadata) LastUpdated() time.Time {
 
 // Brokers returns a list of the cluster nodes.
 func (m *Metadata) Brokers() []*BrokerInfo {
-	var (
-		brokers = make([]*BrokerInfo, len(m.brokers))
-		i       = 0
-	)
+	brokers := make([]*BrokerInfo, 0, len(m.brokers))
 	for _, broker := range m.brokers {
-		brokers[i] = broker
-		i++
+		brokers = append(brokers, broker)
 	}
 	return brokers
 }
 
 // Addrs returns the list of known broker addresses.
 func (m *Metadata) Addrs() []string {
-	var (
-		addrs = make([]string, len(m.addrs))
-		i     = 0
-	)
+	addrs := make([]string, 0, len(m.addrs))
 	for addr := range m.addrs {
-		addrs[i] = addr
-		i++
+		addrs = append(addrs, addr)
 	}
 	return addrs
 }
@@ -149,6 +141,15 @@ func (m *Metadata) Addrs() []string {
 // GetStream returns the given stream or nil if unknown.
 func (m *Metadata) GetStream(name string) *StreamInfo {
 	return m.streams[name]
+}
+
+// Streams returns the list of known streams.
+func (m *Metadata) Streams() []*StreamInfo {
+	streams := make([]*StreamInfo, 0, len(m.streams))
+	for _, stream := range m.streams {
+		streams = append(streams, stream)
+	}
+	return streams
 }
 
 // PartitionCountForStream returns the number of partitions for the given
@@ -209,13 +210,13 @@ func (m *metadataCache) update(ctx context.Context) (*Metadata, error) {
 			partitions: make(map[int32]*PartitionInfo, len(streamMetadata.Partitions)),
 		}
 		for _, partition := range streamMetadata.Partitions {
-			replicas := make([]*BrokerInfo, len(partition.Replicas))
-			for i, replica := range partition.Replicas {
-				replicas[i] = brokers[replica]
+			replicas := make([]*BrokerInfo, 0, len(partition.Replicas))
+			for _, replica := range partition.Replicas {
+				replicas = append(replicas, brokers[replica])
 			}
-			isr := make([]*BrokerInfo, len(partition.Isr))
-			for i, replica := range partition.Isr {
-				isr[i] = brokers[replica]
+			isr := make([]*BrokerInfo, 0, len(partition.Isr))
+			for _, replica := range partition.Isr {
+				isr = append(isr, brokers[replica])
 			}
 			stream.partitions[partition.Id] = &PartitionInfo{
 				id:       partition.Id,
