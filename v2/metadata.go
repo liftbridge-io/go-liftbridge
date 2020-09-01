@@ -36,6 +36,7 @@ type PartitionInfo struct {
 	leader   *BrokerInfo
 	replicas []*BrokerInfo
 	isr      []*BrokerInfo
+	paused   bool
 }
 
 // ID of the partition.
@@ -57,6 +58,11 @@ func (p *PartitionInfo) ISR() []*BrokerInfo {
 // there is no leader.
 func (p *PartitionInfo) Leader() *BrokerInfo {
 	return p.leader
+}
+
+// Paused returns true if this partition is paused.
+func (p *PartitionInfo) Paused() bool {
+	return p.paused
 }
 
 // BrokerInfo contains information for a Liftbridge cluster node.
@@ -216,6 +222,7 @@ func (m *metadataCache) update(ctx context.Context) (*Metadata, error) {
 				leader:   brokers[partition.Leader],
 				replicas: replicas,
 				isr:      isr,
+				paused:   partition.Paused,
 			}
 		}
 		streams[stream.name] = stream
