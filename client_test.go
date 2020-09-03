@@ -1015,6 +1015,7 @@ func TestFetchMetadata(t *testing.T) {
 	require.Equal(t, []*BrokerInfo{broker}, partition.Replicas())
 	require.Equal(t, []*BrokerInfo{broker}, partition.ISR())
 	require.Equal(t, broker, partition.Leader())
+	require.Equal(t, false, partition.Paused())
 
 	req := server.GetFetchMetadataRequests()[0]
 	require.Equal(t, []string(nil), req.Streams)
