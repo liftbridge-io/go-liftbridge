@@ -10,7 +10,7 @@ import (
 	"time"
 
 	pb "github.com/golang/protobuf/proto"
-	"github.com/liftbridge-io/liftbridge-api/go"
+	proto "github.com/liftbridge-io/liftbridge-api/go"
 )
 
 var (
@@ -125,13 +125,15 @@ func (m *Message) Partition() int32 {
 // Ack represents an acknowledgement that a message was committed to a stream
 // partition.
 type Ack struct {
-	stream           string
-	partitionSubject string
-	messageSubject   string
-	offset           int64
-	ackInbox         string
-	correlationID    string
-	ackPolicy        AckPolicy
+	stream             string
+	partitionSubject   string
+	messageSubject     string
+	offset             int64
+	ackInbox           string
+	correlationID      string
+	ackPolicy          AckPolicy
+	receptionTimestamp time.Time
+	commitTimestamp    time.Time
 }
 
 func ackFromProto(wireAck *proto.Ack) *Ack {
@@ -139,13 +141,15 @@ func ackFromProto(wireAck *proto.Ack) *Ack {
 		return nil
 	}
 	ack := &Ack{
-		stream:           wireAck.GetStream(),
-		partitionSubject: wireAck.GetPartitionSubject(),
-		messageSubject:   wireAck.GetMsgSubject(),
-		offset:           wireAck.GetOffset(),
-		ackInbox:         wireAck.GetAckInbox(),
-		correlationID:    wireAck.GetCorrelationId(),
-		ackPolicy:        AckPolicy(wireAck.GetAckPolicy()),
+		stream:             wireAck.GetStream(),
+		partitionSubject:   wireAck.GetPartitionSubject(),
+		messageSubject:     wireAck.GetMsgSubject(),
+		offset:             wireAck.GetOffset(),
+		ackInbox:           wireAck.GetAckInbox(),
+		correlationID:      wireAck.GetCorrelationId(),
+		ackPolicy:          AckPolicy(wireAck.GetAckPolicy()),
+		receptionTimestamp: time.Unix(0, wireAck.GetReceptionTimestamp()),
+		commitTimestamp:    time.Unix(0, wireAck.GetCommitTimestamp()),
 	}
 	return ack
 }
@@ -183,6 +187,16 @@ func (a *Ack) CorrelationID() string {
 // AckPolicy sent on the message.
 func (a *Ack) AckPolicy() AckPolicy {
 	return a.ackPolicy
+}
+
+// ReceptionTimestamp is the timestamp the message was received by the server.
+func (a *Ack) ReceptionTimestamp() time.Time {
+	return a.receptionTimestamp
+}
+
+// CommitTimestamp is the timestamp the message was committed.
+func (a *Ack) CommitTimestamp() time.Time {
+	return a.commitTimestamp
 }
 
 // Partitioner is used to map a message to a stream partition.
