@@ -35,7 +35,7 @@ type StartPosition int32
 
 func (s StartPosition) toProto() proto.StartPosition {
 	return proto.StartPosition(s)
-}common_test.go
+}
 
 const (
 	defaultMaxConnsPerBroker   = 2
