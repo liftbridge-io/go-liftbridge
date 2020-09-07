@@ -107,36 +107,39 @@ func (m *mockServer) Stop(t require.TestingT) {
 }
 
 type mockAPI struct {
-	mu                       sync.Mutex
-	createStreamRequests     []*proto.CreateStreamRequest
-	deleteStreamRequests     []*proto.DeleteStreamRequest
-	pauseStreamRequests      []*proto.PauseStreamRequest
-	subscribeRequests        []*proto.SubscribeRequest
-	fetchMetadataRequests    []*proto.FetchMetadataRequest
-	publishAsyncRequests     []*proto.PublishRequest
-	publishToSubjectRequests []*proto.PublishToSubjectRequest
-	responses                []interface{}
-	messages                 []*proto.Message
-	createStreamErr          error
-	deleteStreamErr          error
-	pauseStreamErr           error
-	subscribeErr             error
-	subscribeAsyncErr        error
-	fetchMetadataErr         error
-	publishErr               error
-	publishAsyncErr          error
-	publishToSubjectErr      error
+	mu                        sync.Mutex
+	createStreamRequests      []*proto.CreateStreamRequest
+	deleteStreamRequests      []*proto.DeleteStreamRequest
+	pauseStreamRequests       []*proto.PauseStreamRequest
+	setStreamReadonlyRequests []*proto.SetStreamReadonlyRequest
+	subscribeRequests         []*proto.SubscribeRequest
+	fetchMetadataRequests     []*proto.FetchMetadataRequest
+	publishAsyncRequests      []*proto.PublishRequest
+	publishToSubjectRequests  []*proto.PublishToSubjectRequest
+	responses                 []interface{}
+	messages                  []*proto.Message
+	createStreamErr           error
+	deleteStreamErr           error
+	pauseStreamErr            error
+	setStreamReadonlyErr      error
+	subscribeErr              error
+	subscribeAsyncErr         error
+	fetchMetadataErr          error
+	publishErr                error
+	publishAsyncErr           error
+	publishToSubjectErr       error
 }
 
 func newMockAPI() *mockAPI {
 	return &mockAPI{
-		createStreamRequests:     []*proto.CreateStreamRequest{},
-		deleteStreamRequests:     []*proto.DeleteStreamRequest{},
-		pauseStreamRequests:      []*proto.PauseStreamRequest{},
-		subscribeRequests:        []*proto.SubscribeRequest{},
-		fetchMetadataRequests:    []*proto.FetchMetadataRequest{},
-		publishAsyncRequests:     []*proto.PublishRequest{},
-		publishToSubjectRequests: []*proto.PublishToSubjectRequest{},
+		createStreamRequests:      []*proto.CreateStreamRequest{},
+		deleteStreamRequests:      []*proto.DeleteStreamRequest{},
+		pauseStreamRequests:       []*proto.PauseStreamRequest{},
+		setStreamReadonlyRequests: []*proto.SetStreamReadonlyRequest{},
+		subscribeRequests:         []*proto.SubscribeRequest{},
+		fetchMetadataRequests:     []*proto.FetchMetadataRequest{},
+		publishAsyncRequests:      []*proto.PublishRequest{},
+		publishToSubjectRequests:  []*proto.PublishToSubjectRequest{},
 	}
 }
 
@@ -162,6 +165,12 @@ func (m *mockAPI) SetupMockPauseStreamError(err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.pauseStreamErr = err
+}
+
+func (m *mockAPI) SetupMockSetStreamReadonlyError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.setStreamReadonlyErr = err
 }
 
 func (m *mockAPI) SetupMockSubscribeMessages(messages []*proto.Message) {
@@ -222,6 +231,12 @@ func (m *mockAPI) GetPauseStreamRequests() []*proto.PauseStreamRequest {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.pauseStreamRequests
+}
+
+func (m *mockAPI) GetSetStreamReadonlyRequests() []*proto.SetStreamReadonlyRequest {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.setStreamReadonlyRequests
 }
 
 func (m *mockAPI) GetSubscribeRequests() []*proto.SubscribeRequest {
@@ -294,6 +309,19 @@ func (m *mockAPI) PauseStream(ctx context.Context, in *proto.PauseStreamRequest)
 	}
 	resp := m.getResponse()
 	return resp.(*proto.PauseStreamResponse), nil
+}
+
+func (m *mockAPI) SetStreamReadonly(ctx context.Context, in *proto.SetStreamReadonlyRequest) (*proto.SetStreamReadonlyResponse, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.setStreamReadonlyRequests = append(m.setStreamReadonlyRequests, in)
+	if m.setStreamReadonlyErr != nil {
+		err := m.setStreamReadonlyErr
+		m.setStreamReadonlyErr = nil
+		return nil, err
+	}
+	resp := m.getResponse()
+	return resp.(*proto.SetStreamReadonlyResponse), nil
 }
 
 func (m *mockAPI) Subscribe(in *proto.SubscribeRequest, server proto.API_SubscribeServer) error {

@@ -188,6 +188,36 @@ func TestPauseStream(t *testing.T) {
 	require.True(t, req.ResumeAll)
 }
 
+func TestSetStreamReadonly(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	server.SetupMockSetStreamReadonlyError(status.Error(codes.NotFound, "stream not found"))
+
+	err = client.SetStreamReadonly(context.Background(), "foo")
+	require.Equal(t, ErrNoSuchPartition, err)
+	req := server.GetSetStreamReadonlyRequests()[0]
+	require.Equal(t, "foo", req.Name)
+	require.Equal(t, []int32(nil), req.Partitions)
+	require.True(t, req.Readonly)
+
+	server.SetupMockResponse(new(proto.SetStreamReadonlyResponse))
+
+	require.NoError(t, client.SetStreamReadonly(context.Background(), "foo",
+		ReadonlyPartitions(0, 1), Readonly(false)))
+	req = server.GetSetStreamReadonlyRequests()[1]
+	require.Equal(t, "foo", req.Name)
+	require.Equal(t, []int32{0, 1}, req.Partitions)
+	require.False(t, req.Readonly)
+}
+
 func TestSubscribe(t *testing.T) {
 	server := newMockServer()
 	defer server.Stop(t)
