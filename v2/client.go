@@ -750,8 +750,12 @@ type SubscriptionOptions struct {
 	// Partition sets the stream partition to consume.
 	Partition int32
 
-	// ReadISRReplica sets client's ability to subscribe from a random ISR
+	// ReadISRReplica sets client's ability to subscribe from a random ISR.
 	ReadISRReplica bool
+
+	// Resume controls if a paused partition can be resumed before
+	// subscription.
+	Resume bool
 }
 
 // SubscriptionOption is a function on the SubscriptionOptions for a
@@ -813,6 +817,16 @@ func StartAtEarliestReceived() SubscriptionOption {
 func ReadISRReplica() SubscriptionOption {
 	return func(o *SubscriptionOptions) error {
 		o.ReadISRReplica = true
+		return nil
+	}
+}
+
+// Resume controls if a paused partition can be resumed before subscription. If
+// true, subscribing to a paused partition will resume it before subscribing to
+// it instead of failing.
+func Resume() SubscriptionOption {
+	return func(o *SubscriptionOptions) error {
+		o.Resume = true
 		return nil
 	}
 }
@@ -1167,6 +1181,7 @@ func (c *client) subscribe(ctx context.Context, stream string,
 				StartTimestamp: opts.StartTimestamp.UnixNano(),
 				Partition:      opts.Partition,
 				ReadISRReplica: opts.ReadISRReplica,
+				Resume:         opts.Resume,
 			}
 		)
 		st, err = conn.Subscribe(ctx, req)
