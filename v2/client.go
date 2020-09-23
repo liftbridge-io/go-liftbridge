@@ -70,10 +70,11 @@ var (
 	// ErrAckTimeout indicates a publish ack was not received in time.
 	ErrAckTimeout = errors.New("publish ack timeout")
 
-	// ErrEndOfReadonlyPartition is sent to subscribers when the stream
-	// partition they are subscribed to has either been set to readonly or is
-	// already readonly and all messages have been read.
-	ErrEndOfReadonlyPartition = errors.New("end of readonly partition reached")
+	// ErrReadonlyPartition is sent to subscribers when the stream partition
+	// they are subscribed to has either been set to readonly or is already
+	// readonly and all messages have been read. It is also returned when
+	// attempting to publish to a readonly partition.
+	ErrReadonlyPartition = errors.New("readonly partition")
 )
 
 // Handler is the callback invoked by Subscribe when a message is received on
@@ -368,8 +369,8 @@ type Client interface {
 	// returns an ErrNoSuchPartition if the given stream or partition does not
 	// exist. By default, this will set the readonly flag on all partitions.
 	// Subscribers to a readonly partition will see their subscription ended
-	// with a ErrEndOfReadonlyPartition error once all messages currently in
-	// the partition have been read.
+	// with a ErrReadonlyPartition error once all messages currently in the
+	// partition have been read.
 	SetStreamReadonly(ctx context.Context, name string, opts ...ReadonlyOption) error
 
 	// Subscribe creates an ephemeral subscription for the given stream. It
@@ -788,8 +789,8 @@ func Readonly(readonly bool) ReadonlyOption {
 // returns an ErrNoSuchPartition if the given stream or partition does not
 // exist. By default, this will set the readonly flag on all partitions.
 // Subscribers to a readonly partition will see their subscription ended
-// with a ErrEndOfReadonlyPartition error once all messages currently in
-// the partition have been read.
+// with a ErrReadonlyPartition error once all messages currently in the
+// partition have been read.
 func (c *client) SetStreamReadonly(ctx context.Context, name string, options ...ReadonlyOption) error {
 	opts := &ReadonlyOptions{}
 	for _, opt := range options {
@@ -940,8 +941,8 @@ func (c *client) Subscribe(ctx context.Context, streamName string, handler Handl
 //
 // If the AckPolicy is not NONE, this will synchronously block until the ack is
 // received. If the ack is not received in time, ErrAckTimeout is returned. If
-// AckPolicy is NONE, this returns nil on success. A FailedPrecondition status
-// code is returned if the partition is readonly.
+// AckPolicy is NONE, this returns nil on success. An ErrReadonlyPartition error
+// is returned if the partition is readonly.
 func (c *client) Publish(ctx context.Context, stream string, value []byte,
 	options ...MessageOption) (*Ack, error) {
 
@@ -1034,6 +1035,9 @@ func (c *client) publishAsync(ctx context.Context, stream string, value []byte,
 
 	if err := asyncStream.Send(req); err != nil {
 		c.removeAckContext(req.CorrelationId)
+		if status.Code(err) == codes.FailedPrecondition {
+			err = ErrReadonlyPartition
+		}
 		return err
 	}
 
@@ -1322,7 +1326,7 @@ LOOP:
 				err = ErrPartitionPaused
 			case codes.ResourceExhausted:
 				// Indicates the end of a readonly partition has been reached.
-				err = ErrEndOfReadonlyPartition
+				err = ErrReadonlyPartition
 			}
 			handler(messageFromProto(msg), err)
 		}
