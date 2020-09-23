@@ -111,7 +111,7 @@ type mockAPI struct {
 	setStreamReadonlyRequests []*proto.SetStreamReadonlyRequest
 	subscribeRequests         []*proto.SubscribeRequest
 	fetchMetadataRequests     []*proto.FetchMetadataRequest
-	publishAsyncRequests      []*proto.PublishRequest
+	publishRequests           []*proto.PublishRequest
 	publishToSubjectRequests  []*proto.PublishToSubjectRequest
 	responses                 []interface{}
 	messages                  []*proto.Message
@@ -134,7 +134,7 @@ func newMockAPI() *mockAPI {
 		setStreamReadonlyRequests: []*proto.SetStreamReadonlyRequest{},
 		subscribeRequests:         []*proto.SubscribeRequest{},
 		fetchMetadataRequests:     []*proto.FetchMetadataRequest{},
-		publishAsyncRequests:      []*proto.PublishRequest{},
+		publishRequests:           []*proto.PublishRequest{},
 		publishToSubjectRequests:  []*proto.PublishToSubjectRequest{},
 	}
 }
