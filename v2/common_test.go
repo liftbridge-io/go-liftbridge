@@ -2,6 +2,7 @@ package liftbridge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -296,6 +297,10 @@ func (m *mockAPI) PauseStream(ctx context.Context, in *proto.PauseStreamRequest)
 	return resp.(*proto.PauseStreamResponse), nil
 }
 
+func (m *mockAPI) SetStreamReadonly(ctx context.Context, in *proto.SetStreamReadonlyRequest) (*proto.SetStreamReadonlyResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (m *mockAPI) Subscribe(in *proto.SubscribeRequest, server proto.API_SubscribeServer) error {
 	m.mu.Lock()
 	m.subscribeRequests = append(m.subscribeRequests, in)
@@ -364,7 +369,10 @@ func (m *mockAPI) PublishAsync(stream proto.API_PublishAsyncServer) error {
 				continue
 			}
 			resp := respIface.(*proto.PublishResponse)
-			resp.Ack.CorrelationId = req.CorrelationId
+			if resp.Ack != nil {
+				resp.Ack.CorrelationId = req.CorrelationId
+			}
+			resp.CorrelationId = req.CorrelationId
 			stream.Send(resp)
 		}
 	}

@@ -155,6 +155,18 @@ func ackFromProto(wireAck *proto.Ack) *Ack {
 	return ack
 }
 
+func asyncErrorFromProto(asyncError *proto.PublishAsyncError) error {
+	if asyncError == nil {
+		return nil
+	}
+	switch asyncError.Code {
+	case proto.PublishAsyncError_NOT_FOUND:
+		return ErrNoSuchPartition
+	default:
+		return errors.New(asyncError.Message)
+	}
+}
+
 // Stream the Message was received on.
 func (a *Ack) Stream() string {
 	return a.stream
