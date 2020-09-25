@@ -162,6 +162,8 @@ func asyncErrorFromProto(asyncError *proto.PublishAsyncError) error {
 	switch asyncError.Code {
 	case proto.PublishAsyncError_NOT_FOUND:
 		return ErrNoSuchPartition
+	case proto.PublishAsyncError_READONLY:
+		return ErrReadonlyPartition
 	default:
 		return errors.New(asyncError.Message)
 	}

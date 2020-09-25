@@ -2,6 +2,7 @@ package liftbridge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -412,4 +413,12 @@ func (m *mockAPI) PublishToSubject(ctx context.Context, in *proto.PublishToSubje
 	}
 	resp := m.getResponse()
 	return resp.(*proto.PublishToSubjectResponse), nil
+}
+
+func (m *mockAPI) SetCursor(ctx context.Context, in *proto.SetCursorRequest) (*proto.SetCursorResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (m *mockAPI) FetchCursor(ctx context.Context, in *proto.FetchCursorRequest) (*proto.FetchCursorResponse, error) {
+	return nil, errors.New("not implemented")
 }
