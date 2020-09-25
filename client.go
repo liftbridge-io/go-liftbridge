@@ -63,6 +63,12 @@ var (
 	// ErrPartitionPaused is sent to subscribers when the stream partition they
 	// are subscribed to has been paused.
 	ErrPartitionPaused = errors.New("stream partition has been paused")
+
+	// ErrReadonlyPartition is sent to subscribers when the stream partition
+	// they are subscribed to has either been set to readonly or is already
+	// readonly and all messages have been read. It is also returned when
+	// attempting to publish to a readonly partition.
+	ErrReadonlyPartition = errors.New("readonly partition")
 )
 
 // Handler is the callback invoked by Subscribe when a message is received on
@@ -166,6 +172,15 @@ type Client interface {
 	// the Liftbridge Publish API or ResumeAll is enabled and another partition
 	// in the stream is published to.
 	PauseStream(ctx context.Context, name string, opts ...PauseOption) error
+
+	// SetStreamReadonly sets the readonly flag on a stream and some or all of
+	// its partitions. Name is the stream identifier, globally unique. It
+	// returns an ErrNoSuchPartition if the given stream or partition does not
+	// exist. By default, this will set the readonly flag on all partitions.
+	// Subscribers to a readonly partition will see their subscription ended
+	// with a ErrReadonlyPartition error once all messages currently in the
+	// partition have been read.
+	SetStreamReadonly(ctx context.Context, name string, opts ...ReadonlyOption) error
 
 	// Subscribe creates an ephemeral subscription for the given stream. It
 	// begins receiving messages starting at the configured position and waits
@@ -512,6 +527,69 @@ func (c *client) PauseStream(ctx context.Context, name string, options ...PauseO
 	return err
 }
 
+// ReadonlyOptions are used to setup stream readonly operations.
+type ReadonlyOptions struct {
+	// Partitions sets the list of partitions on which to set the readonly flag
+	// or all of them if nil/empty.
+	Partitions []int32
+
+	// Readwrite defines if the partitions should be set to readonly (false) or
+	// to readwrite (true). This field is called readwrite and not readonly so
+	// that the default value corresponds to "enable readonly".
+	Readwrite bool
+}
+
+// ReadonlyOption is a function on the ReadonlyOptions for a set readonly call.
+// These are used to configure particular set readonly options.
+type ReadonlyOption func(*ReadonlyOptions) error
+
+// ReadonlyPartitions sets the list of partition on which to set the readonly
+// flag or all of them if nil/empty.
+func ReadonlyPartitions(partitions ...int32) ReadonlyOption {
+	return func(o *ReadonlyOptions) error {
+		o.Partitions = partitions
+		return nil
+	}
+}
+
+// Readonly defines if the partitions should be set to readonly or to readwrite.
+func Readonly(readonly bool) ReadonlyOption {
+	return func(o *ReadonlyOptions) error {
+		o.Readwrite = !readonly
+		return nil
+	}
+}
+
+// SetStreamReadonly sets the readonly flag on a stream and some or all of
+// its partitions. Name is the stream identifier, globally unique. It
+// returns an ErrNoSuchPartition if the given stream or partition does not
+// exist. By default, this will set the readonly flag on all partitions.
+// Subscribers to a readonly partition will see their subscription ended
+// with a ErrReadonlyPartition error once all messages currently in the
+// partition have been read.
+func (c *client) SetStreamReadonly(ctx context.Context, name string, options ...ReadonlyOption) error {
+	opts := &ReadonlyOptions{}
+	for _, opt := range options {
+		if err := opt(opts); err != nil {
+			return err
+		}
+	}
+
+	req := &proto.SetStreamReadonlyRequest{
+		Name:       name,
+		Partitions: opts.Partitions,
+		Readonly:   !opts.Readwrite,
+	}
+	err := c.doResilientRPC(func(client proto.APIClient) error {
+		_, err := client.SetStreamReadonly(ctx, req)
+		return err
+	})
+	if status.Code(err) == codes.NotFound {
+		return ErrNoSuchPartition
+	}
+	return err
+}
+
 // SubscriptionOptions are used to control a subscription's behavior.
 type SubscriptionOptions struct {
 	// StartPosition controls where to begin consuming from in the stream.
@@ -649,13 +727,14 @@ func (c *client) Subscribe(ctx context.Context, streamName string, handler Handl
 // passed through MessageOptions, if any. If a partition or Partitioner is not
 // provided, this defaults to the base partition. This partition determines the
 // underlying NATS subject that gets published to.  To publish directly to a
-// spedcific NATS subject, use the low-level PublishToSubject API.
+// specific NATS subject, use the low-level PublishToSubject API.
 //
 // If the AckPolicy is not NONE and a deadline is provided, this will
 // synchronously block until the ack is received. If the ack is not received in
 // time, a DeadlineExceeded status code is returned. If an AckPolicy and
 // deadline are configured, this returns the Ack on success, otherwise it
-// returns nil.
+// returns nil. An ErrReadonlyPartition error is returned if the partition is
+// readonly.
 func (c *client) Publish(ctx context.Context, stream string, value []byte,
 	options ...MessageOption) (*Ack, error) {
 
@@ -685,6 +764,8 @@ func (c *client) Publish(ctx context.Context, stream string, value []byte,
 		resp, err := client.Publish(ctx, req)
 		if err == nil {
 			ack = resp.Ack
+		} else if status.Code(err) == codes.FailedPrecondition {
+			err = ErrReadonlyPartition
 		}
 		return err
 	})
@@ -877,6 +958,9 @@ LOOP:
 			case codes.FailedPrecondition:
 				// Indicates the partition was paused.
 				err = ErrPartitionPaused
+			case codes.ResourceExhausted:
+				// Indicates the end of a readonly partition has been reached.
+				err = ErrReadonlyPartition
 			}
 			handler(messageFromProto(msg), err)
 		}
