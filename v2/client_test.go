@@ -1013,6 +1013,39 @@ func TestPublishAsyncPartitionNotFound(t *testing.T) {
 	}
 }
 
+func TestPublishAsyncReadonlyPartition(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	server.SetupMockResponse(&proto.PublishResponse{
+		AsyncError: &proto.PublishAsyncError{
+			Code:    proto.PublishAsyncError_READONLY,
+			Message: "partition is readonly",
+		},
+	})
+
+	errorC := make(chan error)
+	err = client.PublishAsync(context.Background(), "foo", []byte("hello"),
+		func(ack *Ack, err error) {
+			errorC <- err
+		})
+	require.NoError(t, err)
+
+	select {
+	case err := <-errorC:
+		require.Equal(t, ErrReadonlyPartition, err)
+	case <-time.After(time.Second):
+		t.Fatal("Did not receive expected error")
+	}
+}
+
 func TestPublishAsyncInternalError(t *testing.T) {
 	server := newMockServer()
 	defer server.Stop(t)
