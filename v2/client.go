@@ -55,8 +55,8 @@ var (
 	// not exist in the Liftbridge cluster.
 	ErrNoSuchStream = errors.New("stream does not exist")
 
-	// ErrNoSuchPartition is returned by Subscribe if the specified stream
-	// partition does not exist in the Liftbridge cluster.
+	// ErrNoSuchPartition is returned by Subscribe or Publish if the specified
+	// stream partition does not exist in the Liftbridge cluster.
 	ErrNoSuchPartition = errors.New("stream partition does not exist")
 
 	// ErrStreamDeleted is sent to subscribers when the stream they are
@@ -1071,9 +1071,16 @@ func (c *client) dispatchAcks() {
 			continue
 		}
 
-		ctx := c.removeAckContext(resp.Ack.CorrelationId)
+		var correlationID string
+		if resp.AsyncError != nil {
+			correlationID = resp.CorrelationId
+		} else if resp.Ack != nil {
+			// TODO: Use resp.CorrelationId once Ack.CorrelationId is removed.
+			correlationID = resp.Ack.CorrelationId
+		}
+		ctx := c.removeAckContext(correlationID)
 		if ctx != nil && ctx.handler != nil {
-			ctx.handler(ackFromProto(resp.Ack), nil)
+			ctx.handler(ackFromProto(resp.Ack), asyncErrorFromProto(resp.AsyncError))
 		}
 	}
 }
