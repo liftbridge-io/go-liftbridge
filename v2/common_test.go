@@ -392,7 +392,10 @@ func (m *mockAPI) PublishAsync(stream proto.API_PublishAsyncServer) error {
 				continue
 			}
 			resp := respIface.(*proto.PublishResponse)
-			resp.Ack.CorrelationId = req.CorrelationId
+			if resp.Ack != nil {
+				resp.Ack.CorrelationId = req.CorrelationId
+			}
+			resp.CorrelationId = req.CorrelationId
 			stream.Send(resp)
 		}
 	}

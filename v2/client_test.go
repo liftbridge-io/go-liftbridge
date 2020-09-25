@@ -980,6 +980,73 @@ func TestPublishAsyncAckTimeout(t *testing.T) {
 	}
 }
 
+func TestPublishAsyncPartitionNotFound(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	server.SetupMockResponse(&proto.PublishResponse{
+		AsyncError: &proto.PublishAsyncError{
+			Code:    proto.PublishAsyncError_NOT_FOUND,
+			Message: "partition not found",
+		},
+	})
+
+	errorC := make(chan error)
+	err = client.PublishAsync(context.Background(), "foo", []byte("hello"),
+		func(ack *Ack, err error) {
+			errorC <- err
+		})
+	require.NoError(t, err)
+
+	select {
+	case err := <-errorC:
+		require.Equal(t, ErrNoSuchPartition, err)
+	case <-time.After(time.Second):
+		t.Fatal("Did not receive expected error")
+	}
+}
+
+func TestPublishAsyncInternalError(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	server.SetupMockResponse(&proto.PublishResponse{
+		AsyncError: &proto.PublishAsyncError{
+			Code:    proto.PublishAsyncError_UNKNOWN,
+			Message: "internal error",
+		},
+	})
+
+	errorC := make(chan error)
+	err = client.PublishAsync(context.Background(), "foo", []byte("hello"),
+		func(ack *Ack, err error) {
+			errorC <- err
+		})
+	require.NoError(t, err)
+
+	select {
+	case err := <-errorC:
+		require.Error(t, err)
+		require.Equal(t, "internal error", err.Error())
+	case <-time.After(time.Second):
+		t.Fatal("Did not receive expected error")
+	}
+}
+
 func TestPublishToPartition(t *testing.T) {
 	server := newMockServer()
 	defer server.Stop(t)

@@ -55,8 +55,8 @@ var (
 	// not exist in the Liftbridge cluster.
 	ErrNoSuchStream = errors.New("stream does not exist")
 
-	// ErrNoSuchPartition is returned by Subscribe if the specified stream
-	// partition does not exist in the Liftbridge cluster.
+	// ErrNoSuchPartition is returned by Subscribe or Publish if the specified
+	// stream partition does not exist in the Liftbridge cluster.
 	ErrNoSuchPartition = errors.New("stream partition does not exist")
 
 	// ErrStreamDeleted is sent to subscribers when the stream they are
@@ -828,8 +828,12 @@ type SubscriptionOptions struct {
 	// Partition sets the stream partition to consume.
 	Partition int32
 
-	// ReadISRReplica sets client's ability to subscribe from a random ISR
+	// ReadISRReplica sets client's ability to subscribe from a random ISR.
 	ReadISRReplica bool
+
+	// Resume controls if a paused partition can be resumed before
+	// subscription.
+	Resume bool
 }
 
 // SubscriptionOption is a function on the SubscriptionOptions for a
@@ -891,6 +895,16 @@ func StartAtEarliestReceived() SubscriptionOption {
 func ReadISRReplica() SubscriptionOption {
 	return func(o *SubscriptionOptions) error {
 		o.ReadISRReplica = true
+		return nil
+	}
+}
+
+// Resume controls if a paused partition can be resumed before subscription. If
+// true, subscribing to a paused partition will resume it before subscribing to
+// it instead of failing.
+func Resume() SubscriptionOption {
+	return func(o *SubscriptionOptions) error {
+		o.Resume = true
 		return nil
 	}
 }
@@ -1139,9 +1153,16 @@ func (c *client) dispatchAcks() {
 			continue
 		}
 
-		ctx := c.removeAckContext(resp.Ack.CorrelationId)
+		var correlationID string
+		if resp.AsyncError != nil {
+			correlationID = resp.CorrelationId
+		} else if resp.Ack != nil {
+			// TODO: Use resp.CorrelationId once Ack.CorrelationId is removed.
+			correlationID = resp.Ack.CorrelationId
+		}
+		ctx := c.removeAckContext(correlationID)
 		if ctx != nil && ctx.handler != nil {
-			ctx.handler(ackFromProto(resp.Ack), nil)
+			ctx.handler(ackFromProto(resp.Ack), asyncErrorFromProto(resp.AsyncError))
 		}
 	}
 }
@@ -1249,6 +1270,7 @@ func (c *client) subscribe(ctx context.Context, stream string,
 				StartTimestamp: opts.StartTimestamp.UnixNano(),
 				Partition:      opts.Partition,
 				ReadISRReplica: opts.ReadISRReplica,
+				Resume:         opts.Resume,
 			}
 		)
 		st, err = conn.Subscribe(ctx, req)
