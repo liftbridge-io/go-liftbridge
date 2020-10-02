@@ -158,6 +158,15 @@ type StreamOptions struct {
 	// CompactEnabled controls the activation of stream log compaction. If this
 	// is not set, it uses the server default value.
 	CompactEnabled *bool
+
+	// The amount of time a stream partition can go idle before it is
+	// automatically paused. If this is not set, it uses the server default
+	// value.
+	AutoPauseTime *time.Duration
+
+	// Disables automatic partition pausing when there are subscribers. If this
+	// is not set, it uses the server default value.
+	AutoPauseDisableIfSubscribers *bool
 }
 
 func (s *StreamOptions) newRequest(subject, name string) *proto.CreateStreamRequest {
@@ -191,6 +200,12 @@ func (s *StreamOptions) newRequest(subject, name string) *proto.CreateStreamRequ
 	}
 	if s.CompactEnabled != nil {
 		req.CompactEnabled = &proto.NullableBool{Value: *s.CompactEnabled}
+	}
+	if s.AutoPauseTime != nil {
+		req.AutoPauseTime = &proto.NullableInt64{Value: s.AutoPauseTime.Milliseconds()}
+	}
+	if s.AutoPauseDisableIfSubscribers != nil {
+		req.AutoPauseDisableIfSubscribers = &proto.NullableBool{Value: *s.AutoPauseDisableIfSubscribers}
 	}
 	return req
 }
@@ -338,6 +353,28 @@ func CompactMaxGoroutines(val int32) StreamOption {
 func CompactEnabled(val bool) StreamOption {
 	return func(o *StreamOptions) error {
 		o.CompactEnabled = &val
+		return nil
+	}
+}
+
+// AutoPauseTime sets the value of auto.pause.time. This controls the amount of
+// time a stream partition can go idle, i.e. not receive a message, before it
+// is automatically paused. If this is not set, it uses the server default
+// value.
+func AutoPauseTime(val time.Duration) StreamOption {
+	return func(o *StreamOptions) error {
+		o.AutoPauseTime = &val
+		return nil
+	}
+}
+
+// AutoPauseDisableIfSubscribers sets the value of
+// auto.pause.disable.if.subscribers. This controls whether automatic partition
+// pausing should be disabled when there are subscribers. If this is not set,
+// it uses the server default value.
+func AutoPauseDisableIfSubscribers(val bool) StreamOption {
+	return func(o *StreamOptions) error {
+		o.AutoPauseDisableIfSubscribers = &val
 		return nil
 	}
 }
