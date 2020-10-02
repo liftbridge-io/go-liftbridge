@@ -362,6 +362,10 @@ func (m *mockAPI) FetchMetadata(ctx context.Context, in *proto.FetchMetadataRequ
 	return resp.(*proto.FetchMetadataResponse), nil
 }
 
+func (m *mockAPI) FetchPartitionMetadata(ctx context.Context, in *proto.FetchPartitionMetadataRequest) (*proto.FetchPartitionMetadataResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (m *mockAPI) Publish(ctx context.Context, in *proto.PublishRequest) (*proto.PublishResponse, error) {
 	panic("Publish is deprecated")
 }
