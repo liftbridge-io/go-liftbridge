@@ -158,10 +158,12 @@ type StreamOptions struct {
 	CompactEnabled *bool
 
 	// The amount of time a stream partition can go idle before it is
-	// automatically paused.
+	// automatically paused. If this is not set, it uses the server default
+	// value.
 	AutoPauseTime *time.Duration
 
-	// Disables automatic partition pausing when there are subscribers.
+	// Disables automatic partition pausing when there are subscribers. If this
+	// is not set, it uses the server default value.
 	AutoPauseDisableIfSubscribers *bool
 }
 
@@ -355,7 +357,8 @@ func CompactEnabled(val bool) StreamOption {
 
 // AutoPauseTime sets the value of auto.pause.time. This controls the amount of
 // time a stream partition can go idle, i.e. not receive a message, before it
-// is automatically paused.
+// is automatically paused. If this is not set, it uses the server default
+// value.
 func AutoPauseTime(val time.Duration) StreamOption {
 	return func(o *StreamOptions) error {
 		o.AutoPauseTime = &val
@@ -365,7 +368,8 @@ func AutoPauseTime(val time.Duration) StreamOption {
 
 // AutoPauseDisableIfSubscribers sets the value of
 // auto.pause.disable.if.subscribers. This controls whether automatic partition
-// pausing should be disabled when there are subscribers.
+// pausing should be disabled when there are subscribers. If this is not set,
+// it uses the server default value.
 func AutoPauseDisableIfSubscribers(val bool) StreamOption {
 	return func(o *StreamOptions) error {
 		o.AutoPauseDisableIfSubscribers = &val
