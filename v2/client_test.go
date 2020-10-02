@@ -1394,14 +1394,16 @@ func TestResubscribeFail(t *testing.T) {
 
 func TestStreamOptionsNewRequest(t *testing.T) {
 	var (
-		retentionMaxBytes    = int64(1024)
-		retentionMaxMessages = int64(10)
-		retentionMaxAge      = time.Hour
-		cleanerInterval      = time.Minute
-		segmentMaxBytes      = int64(512)
-		segmentMaxAge        = time.Minute
-		compactMaxGoroutines = int32(5)
-		compactEnabled       = true
+		retentionMaxBytes             = int64(1024)
+		retentionMaxMessages          = int64(10)
+		retentionMaxAge               = time.Hour
+		cleanerInterval               = time.Minute
+		segmentMaxBytes               = int64(512)
+		segmentMaxAge                 = time.Minute
+		compactMaxGoroutines          = int32(5)
+		compactEnabled                = true
+		autoPauseTime                 = time.Minute
+		autoPauseDisableIfSubscribers = true
 	)
 	options := []StreamOption{
 		Group("foo"),
@@ -1415,6 +1417,8 @@ func TestStreamOptionsNewRequest(t *testing.T) {
 		SegmentMaxAge(segmentMaxAge),
 		CompactMaxGoroutines(compactMaxGoroutines),
 		CompactEnabled(compactEnabled),
+		AutoPauseTime(autoPauseTime),
+		AutoPauseDisableIfSubscribers(autoPauseDisableIfSubscribers),
 	}
 
 	opts := &StreamOptions{}
@@ -1435,6 +1439,8 @@ func TestStreamOptionsNewRequest(t *testing.T) {
 	require.Equal(t, segmentMaxAge.Milliseconds(), req.SegmentMaxAge.Value)
 	require.Equal(t, compactMaxGoroutines, req.CompactMaxGoroutines.Value)
 	require.Equal(t, compactEnabled, req.CompactEnabled.Value)
+	require.Equal(t, autoPauseTime.Milliseconds(), req.AutoPauseTime.Value)
+	require.Equal(t, autoPauseDisableIfSubscribers, req.AutoPauseDisableIfSubscribers.Value)
 }
 
 func ExampleConnect() {
