@@ -117,6 +117,8 @@ type mockAPI struct {
 	fetchMetadataRequests     []*proto.FetchMetadataRequest
 	publishAsyncRequests      []*proto.PublishRequest
 	publishToSubjectRequests  []*proto.PublishToSubjectRequest
+	setCursorRequests         []*proto.SetCursorRequest
+	fetchCursorRequests       []*proto.FetchCursorRequest
 	responses                 []interface{}
 	messages                  []*proto.Message
 	createStreamErr           error
@@ -129,6 +131,8 @@ type mockAPI struct {
 	publishErr                error
 	publishAsyncErr           error
 	publishToSubjectErr       error
+	setCursorErr              error
+	fetchCursorErr            error
 }
 
 func newMockAPI() *mockAPI {
@@ -141,6 +145,8 @@ func newMockAPI() *mockAPI {
 		fetchMetadataRequests:     []*proto.FetchMetadataRequest{},
 		publishAsyncRequests:      []*proto.PublishRequest{},
 		publishToSubjectRequests:  []*proto.PublishToSubjectRequest{},
+		setCursorRequests:         []*proto.SetCursorRequest{},
+		fetchCursorRequests:       []*proto.FetchCursorRequest{},
 	}
 }
 
@@ -216,6 +222,18 @@ func (m *mockAPI) SetupMockSubscribeAsyncError(err error) {
 	m.subscribeAsyncErr = err
 }
 
+func (m *mockAPI) SetupMockSetCursorError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.setCursorErr = err
+}
+
+func (m *mockAPI) SetupMockFetchCursorError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.fetchCursorErr = err
+}
+
 func (m *mockAPI) GetCreateStreamRequests() []*proto.CreateStreamRequest {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -256,6 +274,18 @@ func (m *mockAPI) GetPublishToSubjectRequests() []*proto.PublishToSubjectRequest
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.publishToSubjectRequests
+}
+
+func (m *mockAPI) GetSetCursorRequests() []*proto.SetCursorRequest {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.setCursorRequests
+}
+
+func (m *mockAPI) GetFetchCursorRequests() []*proto.FetchCursorRequest {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.fetchCursorRequests
 }
 
 func (m *mockAPI) GetFetchMetadataRequests() []*proto.FetchMetadataRequest {
@@ -420,9 +450,27 @@ func (m *mockAPI) PublishToSubject(ctx context.Context, in *proto.PublishToSubje
 }
 
 func (m *mockAPI) SetCursor(ctx context.Context, in *proto.SetCursorRequest) (*proto.SetCursorResponse, error) {
-	return nil, errors.New("not implemented")
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.setCursorRequests = append(m.setCursorRequests, in)
+	if m.setCursorErr != nil {
+		err := m.setCursorErr
+		m.setCursorErr = nil
+		return nil, err
+	}
+	resp := m.getResponse()
+	return resp.(*proto.SetCursorResponse), nil
 }
 
 func (m *mockAPI) FetchCursor(ctx context.Context, in *proto.FetchCursorRequest) (*proto.FetchCursorResponse, error) {
-	return nil, errors.New("not implemented")
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.fetchCursorRequests = append(m.fetchCursorRequests, in)
+	if m.fetchCursorErr != nil {
+		err := m.fetchCursorErr
+		m.fetchCursorErr = nil
+		return nil, err
+	}
+	resp := m.getResponse()
+	return resp.(*proto.FetchCursorResponse), nil
 }
