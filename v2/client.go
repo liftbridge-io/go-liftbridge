@@ -44,6 +44,8 @@ const (
 	defaultKeepAliveTime       = 30 * time.Second
 	defaultResubscribeWaitTime = 30 * time.Second
 	defaultAckWaitTime         = 5 * time.Second
+
+	cursorsStream = "__cursors"
 )
 
 var (
@@ -451,6 +453,15 @@ type Client interface {
 	// FetchMetadata returns cluster metadata including broker and stream
 	// information.
 	FetchMetadata(ctx context.Context) (*Metadata, error)
+
+	// SetCursor persists a cursor position for a particular stream partition.
+	// This can be used to checkpoint a consumer's position in a stream to
+	// resume processing later.
+	SetCursor(ctx context.Context, id, stream string, partition int32, offset int64) error
+
+	// FetchCursor retrieves a cursor position for a particular stream
+	// partition. It returns -1 if the cursor does not exist.
+	FetchCursor(ctx context.Context, id, stream string, partition int32) (int64, error)
 }
 
 // client implements the Client interface. It maintains a pool of connections
@@ -1153,6 +1164,71 @@ func (c *client) FetchMetadata(ctx context.Context) (*Metadata, error) {
 	return c.metadata.update(ctx)
 }
 
+// SetCursor persists a cursor position for a particular stream partition.
+// This can be used to checkpoint a consumer's position in a stream to resume
+// processing later.
+func (c *client) SetCursor(ctx context.Context, id, stream string, partition int32, offset int64) error {
+	req := &proto.SetCursorRequest{
+		Stream:    stream,
+		Partition: partition,
+		CursorId:  id,
+		Offset:    offset,
+	}
+	cursorsPartition, err := c.getCursorsPartition(ctx, c.getCursorKey(id, stream, partition))
+	if err != nil {
+		return err
+	}
+	return c.doResilientLeaderRPC(ctx, func(client proto.APIClient) error {
+		_, err := client.SetCursor(ctx, req)
+		return err
+	}, cursorsStream, cursorsPartition)
+}
+
+// FetchCursor retrieves a cursor position for a particular stream partition.
+// It returns -1 if the cursor does not exist.
+func (c *client) FetchCursor(ctx context.Context, id, stream string, partition int32) (int64, error) {
+	var (
+		req = &proto.FetchCursorRequest{
+			Stream:    stream,
+			Partition: partition,
+			CursorId:  id,
+		}
+		offset int64
+	)
+	cursorsPartition, err := c.getCursorsPartition(ctx, c.getCursorKey(id, stream, partition))
+	if err != nil {
+		return 0, err
+	}
+	err = c.doResilientLeaderRPC(ctx, func(client proto.APIClient) error {
+		resp, err := client.FetchCursor(ctx, req)
+		if err != nil {
+			return err
+		}
+		offset = resp.Offset
+		return nil
+	}, cursorsStream, cursorsPartition)
+	return offset, err
+}
+
+func (c *client) getCursorKey(cursorID, streamName string, partitionID int32) []byte {
+	return []byte(fmt.Sprintf("%s,%s,%d", cursorID, streamName, partitionID))
+}
+
+func (c *client) getCursorsPartition(ctx context.Context, cursorKey []byte) (int32, error) {
+	// Make sure we have metadata for the cursors stream and, if not, update it.
+	metadata, err := c.waitForStreamMetadata(ctx, cursorsStream)
+	if err != nil {
+		return 0, err
+	}
+
+	stream := metadata.GetStream(cursorsStream)
+	if stream == nil {
+		return 0, errors.New("cursors stream does not exist")
+	}
+
+	return int32(hasher(cursorKey) % uint32(len(stream.Partitions()))), nil
+}
+
 func (c *client) removeAckContext(cid string) *ackContext {
 	var timer *time.Timer
 	c.mu.Lock()
@@ -1299,17 +1375,15 @@ func (c *client) subscribe(ctx context.Context, stream string,
 			c.metadata.update(ctx)
 			continue
 		}
-		var (
-			req = &proto.SubscribeRequest{
-				Stream:         stream,
-				StartPosition:  opts.StartPosition.toProto(),
-				StartOffset:    opts.StartOffset,
-				StartTimestamp: opts.StartTimestamp.UnixNano(),
-				Partition:      opts.Partition,
-				ReadISRReplica: opts.ReadISRReplica,
-				Resume:         opts.Resume,
-			}
-		)
+		req := &proto.SubscribeRequest{
+			Stream:         stream,
+			StartPosition:  opts.StartPosition.toProto(),
+			StartOffset:    opts.StartOffset,
+			StartTimestamp: opts.StartTimestamp.UnixNano(),
+			Partition:      opts.Partition,
+			ReadISRReplica: opts.ReadISRReplica,
+			Resume:         opts.Resume,
+		}
 		st, err = conn.Subscribe(ctx, req)
 		if err != nil {
 			if status.Code(err) == codes.Unavailable {
@@ -1465,6 +1539,43 @@ func (c *client) doResilientRPC(rpc func(client proto.APIClient) error) (err err
 		}
 	}
 	return
+}
+
+// doResilientLeaderRPC sends the given RPC to the partition leader and
+// performs retries if it fails due to the broker being unavailable.
+func (c *client) doResilientLeaderRPC(ctx context.Context, rpc func(client proto.APIClient) error,
+	stream string, partition int32) (err error) {
+
+	var (
+		pool *connPool
+		addr string
+		conn *conn
+	)
+	for i := 0; i < 5; i++ {
+		pool, addr, err = c.getPoolAndAddr(stream, partition, false)
+		if err != nil {
+			time.Sleep(50 * time.Millisecond)
+			c.metadata.update(ctx)
+			continue
+		}
+		conn, err = pool.get(c.connFactory(addr))
+		if err != nil {
+			time.Sleep(50 * time.Millisecond)
+			c.metadata.update(ctx)
+			continue
+		}
+		err = rpc(conn)
+		pool.put(conn)
+		if err != nil {
+			if status.Code(err) == codes.Unavailable {
+				time.Sleep(50 * time.Millisecond)
+				c.metadata.update(ctx)
+				continue
+			}
+		}
+		break
+	}
+	return err
 }
 
 // dialBroker dials each broker in the cluster, in random order, returning a

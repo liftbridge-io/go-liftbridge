@@ -1443,6 +1443,173 @@ func TestStreamOptionsNewRequest(t *testing.T) {
 	require.Equal(t, autoPauseDisableIfSubscribers, req.AutoPauseDisableIfSubscribers.Value)
 }
 
+func TestSetCursor(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	metadataResp := &proto.FetchMetadataResponse{
+		Brokers: []*proto.Broker{{
+			Id:   "a",
+			Host: "localhost",
+			Port: int32(port),
+		}},
+		Metadata: []*proto.StreamMetadata{{
+			Name:    "__cursors",
+			Subject: "__cursors",
+			Partitions: map[int32]*proto.PartitionMetadata{
+				0: {
+					Id:       0,
+					Leader:   "a",
+					Replicas: []string{"a"},
+					Isr:      []string{"a"},
+				},
+			},
+		}},
+	}
+
+	server.SetupMockResponse(metadataResp, new(proto.SetCursorResponse))
+
+	err = client.SetCursor(context.Background(), "foo", "bar", 1, 5)
+	require.NoError(t, err)
+
+	reqs := server.GetSetCursorRequests()
+	require.Len(t, reqs, 1)
+	req := reqs[0]
+	require.Equal(t, "foo", req.CursorId)
+	require.Equal(t, "bar", req.Stream)
+	require.Equal(t, int32(1), req.Partition)
+	require.Equal(t, int64(5), req.Offset)
+}
+
+func TestSetCursorNotLeader(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	metadataResp := &proto.FetchMetadataResponse{
+		Brokers: []*proto.Broker{{
+			Id:   "a",
+			Host: "localhost",
+			Port: int32(port),
+		}},
+		Metadata: []*proto.StreamMetadata{{
+			Name:    "__cursors",
+			Subject: "__cursors",
+			Partitions: map[int32]*proto.PartitionMetadata{
+				0: {
+					Id:       0,
+					Leader:   "a",
+					Replicas: []string{"a"},
+					Isr:      []string{"a"},
+				},
+			},
+		}},
+	}
+
+	server.SetupMockResponse(metadataResp)
+	server.SetupMockSetCursorError(status.Error(codes.FailedPrecondition, "server is not partition leader"))
+
+	err = client.SetCursor(context.Background(), "foo", "bar", 2, 5)
+	require.Error(t, err)
+}
+
+func TestFetchCursor(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	metadataResp := &proto.FetchMetadataResponse{
+		Brokers: []*proto.Broker{{
+			Id:   "a",
+			Host: "localhost",
+			Port: int32(port),
+		}},
+		Metadata: []*proto.StreamMetadata{{
+			Name:    "__cursors",
+			Subject: "__cursors",
+			Partitions: map[int32]*proto.PartitionMetadata{
+				0: {
+					Id:       0,
+					Leader:   "a",
+					Replicas: []string{"a"},
+					Isr:      []string{"a"},
+				},
+			},
+		}},
+	}
+
+	resp := &proto.FetchCursorResponse{Offset: 11}
+	server.SetupMockResponse(metadataResp, resp)
+
+	offset, err := client.FetchCursor(context.Background(), "foo", "bar", 1)
+	require.NoError(t, err)
+	require.Equal(t, int64(11), offset)
+
+	reqs := server.GetFetchCursorRequests()
+	require.Len(t, reqs, 1)
+	req := reqs[0]
+	require.Equal(t, "foo", req.CursorId)
+	require.Equal(t, "bar", req.Stream)
+	require.Equal(t, int32(1), req.Partition)
+}
+
+func TestFetchCursorNotLeader(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	metadataResp := &proto.FetchMetadataResponse{
+		Brokers: []*proto.Broker{{
+			Id:   "a",
+			Host: "localhost",
+			Port: int32(port),
+		}},
+		Metadata: []*proto.StreamMetadata{{
+			Name:    "__cursors",
+			Subject: "__cursors",
+			Partitions: map[int32]*proto.PartitionMetadata{
+				0: {
+					Id:       0,
+					Leader:   "a",
+					Replicas: []string{"a"},
+					Isr:      []string{"a"},
+				},
+			},
+		}},
+	}
+
+	server.SetupMockResponse(metadataResp)
+	server.SetupMockFetchCursorError(status.Error(codes.FailedPrecondition, "server is not partition leader"))
+
+	_, err = client.FetchCursor(context.Background(), "foo", "bar", 2)
+	require.Error(t, err)
+}
+
 func ExampleConnect() {
 	addr := "localhost:9292"
 	client, err := Connect([]string{addr})
