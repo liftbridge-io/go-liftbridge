@@ -1404,6 +1404,7 @@ func TestStreamOptionsNewRequest(t *testing.T) {
 		compactEnabled                = true
 		autoPauseTime                 = time.Minute
 		autoPauseDisableIfSubscribers = true
+		minISR                        = 2
 	)
 	options := []StreamOption{
 		Group("foo"),
@@ -1419,6 +1420,7 @@ func TestStreamOptionsNewRequest(t *testing.T) {
 		CompactEnabled(compactEnabled),
 		AutoPauseTime(autoPauseTime),
 		AutoPauseDisableIfSubscribers(autoPauseDisableIfSubscribers),
+		MinISR(minISR),
 	}
 
 	opts := &StreamOptions{}
@@ -1441,6 +1443,7 @@ func TestStreamOptionsNewRequest(t *testing.T) {
 	require.Equal(t, compactEnabled, req.CompactEnabled.Value)
 	require.Equal(t, autoPauseTime.Milliseconds(), req.AutoPauseTime.Value)
 	require.Equal(t, autoPauseDisableIfSubscribers, req.AutoPauseDisableIfSubscribers.Value)
+	require.Equal(t, int32(minISR), req.MinIsr.Value)
 }
 
 func TestSetCursor(t *testing.T) {
