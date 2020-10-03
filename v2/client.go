@@ -167,6 +167,11 @@ type StreamOptions struct {
 	// Disables automatic partition pausing when there are subscribers. If this
 	// is not set, it uses the server default value.
 	AutoPauseDisableIfSubscribers *bool
+
+	// The minimum number of replicas that must acknowledge a stream write
+	// before it can be committed. If this is not set, it uses the server
+	// default value.
+	MinISR *int
 }
 
 func (s *StreamOptions) newRequest(subject, name string) *proto.CreateStreamRequest {
@@ -206,6 +211,9 @@ func (s *StreamOptions) newRequest(subject, name string) *proto.CreateStreamRequ
 	}
 	if s.AutoPauseDisableIfSubscribers != nil {
 		req.AutoPauseDisableIfSubscribers = &proto.NullableBool{Value: *s.AutoPauseDisableIfSubscribers}
+	}
+	if s.MinISR != nil {
+		req.MinIsr = &proto.NullableInt32{Value: int32(*s.MinISR)}
 	}
 	return req
 }
@@ -375,6 +383,17 @@ func AutoPauseTime(val time.Duration) StreamOption {
 func AutoPauseDisableIfSubscribers(val bool) StreamOption {
 	return func(o *StreamOptions) error {
 		o.AutoPauseDisableIfSubscribers = &val
+		return nil
+	}
+}
+
+// MinISR overrides clustering.min.insync.replicas for the given stream. This
+// controls the minimum number of replicas that must acknowledge a stream write
+// before it can be committed. If this is not set, it uses the server default
+// value.
+func MinISR(minISR int) StreamOption {
+	return func(o *StreamOptions) error {
+		o.MinISR = &minISR
 		return nil
 	}
 }
