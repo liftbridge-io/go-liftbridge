@@ -37,6 +37,7 @@ type PartitionInfo struct {
 	replicas []*BrokerInfo
 	isr      []*BrokerInfo
 	paused   bool
+	readonly bool
 }
 
 // ID of the partition.
@@ -63,6 +64,11 @@ func (p *PartitionInfo) Leader() *BrokerInfo {
 // Paused returns true if this partition is paused.
 func (p *PartitionInfo) Paused() bool {
 	return p.paused
+}
+
+// Readonly returns true if this partition is read-only.
+func (p *PartitionInfo) Readonly() bool {
+	return p.readonly
 }
 
 // BrokerInfo contains information for a Liftbridge cluster node.
@@ -224,6 +230,7 @@ func (m *metadataCache) update(ctx context.Context) (*Metadata, error) {
 				replicas: replicas,
 				isr:      isr,
 				paused:   partition.Paused,
+				readonly: partition.Readonly,
 			}
 		}
 		streams[stream.name] = stream
