@@ -2,7 +2,6 @@ package liftbridge
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -108,45 +107,48 @@ func (m *mockServer) Stop(t require.TestingT) {
 }
 
 type mockAPI struct {
-	mu                        sync.Mutex
-	createStreamRequests      []*proto.CreateStreamRequest
-	deleteStreamRequests      []*proto.DeleteStreamRequest
-	pauseStreamRequests       []*proto.PauseStreamRequest
-	setStreamReadonlyRequests []*proto.SetStreamReadonlyRequest
-	subscribeRequests         []*proto.SubscribeRequest
-	fetchMetadataRequests     []*proto.FetchMetadataRequest
-	publishAsyncRequests      []*proto.PublishRequest
-	publishToSubjectRequests  []*proto.PublishToSubjectRequest
-	setCursorRequests         []*proto.SetCursorRequest
-	fetchCursorRequests       []*proto.FetchCursorRequest
-	responses                 []interface{}
-	messages                  []*proto.Message
-	createStreamErr           error
-	deleteStreamErr           error
-	pauseStreamErr            error
-	setStreamReadonlyErr      error
-	subscribeErr              error
-	subscribeAsyncErr         error
-	fetchMetadataErr          error
-	publishErr                error
-	publishAsyncErr           error
-	publishToSubjectErr       error
-	setCursorErr              error
-	fetchCursorErr            error
+	mu                             sync.Mutex
+	createStreamRequests           []*proto.CreateStreamRequest
+	deleteStreamRequests           []*proto.DeleteStreamRequest
+	pauseStreamRequests            []*proto.PauseStreamRequest
+	setStreamReadonlyRequests      []*proto.SetStreamReadonlyRequest
+	subscribeRequests              []*proto.SubscribeRequest
+	fetchMetadataRequests          []*proto.FetchMetadataRequest
+	publishAsyncRequests           []*proto.PublishRequest
+	publishToSubjectRequests       []*proto.PublishToSubjectRequest
+	setCursorRequests              []*proto.SetCursorRequest
+	fetchCursorRequests            []*proto.FetchCursorRequest
+	fetchPartitionMetadataRequests []*proto.FetchPartitionMetadataRequest
+	responses                      []interface{}
+	messages                       []*proto.Message
+	createStreamErr                error
+	deleteStreamErr                error
+	pauseStreamErr                 error
+	setStreamReadonlyErr           error
+	subscribeErr                   error
+	subscribeAsyncErr              error
+	fetchMetadataErr               error
+	fetchPartitionMetadataErr      error
+	publishErr                     error
+	publishAsyncErr                error
+	publishToSubjectErr            error
+	setCursorErr                   error
+	fetchCursorErr                 error
 }
 
 func newMockAPI() *mockAPI {
 	return &mockAPI{
-		createStreamRequests:      []*proto.CreateStreamRequest{},
-		deleteStreamRequests:      []*proto.DeleteStreamRequest{},
-		pauseStreamRequests:       []*proto.PauseStreamRequest{},
-		setStreamReadonlyRequests: []*proto.SetStreamReadonlyRequest{},
-		subscribeRequests:         []*proto.SubscribeRequest{},
-		fetchMetadataRequests:     []*proto.FetchMetadataRequest{},
-		publishAsyncRequests:      []*proto.PublishRequest{},
-		publishToSubjectRequests:  []*proto.PublishToSubjectRequest{},
-		setCursorRequests:         []*proto.SetCursorRequest{},
-		fetchCursorRequests:       []*proto.FetchCursorRequest{},
+		createStreamRequests:           []*proto.CreateStreamRequest{},
+		deleteStreamRequests:           []*proto.DeleteStreamRequest{},
+		pauseStreamRequests:            []*proto.PauseStreamRequest{},
+		setStreamReadonlyRequests:      []*proto.SetStreamReadonlyRequest{},
+		subscribeRequests:              []*proto.SubscribeRequest{},
+		fetchMetadataRequests:          []*proto.FetchMetadataRequest{},
+		publishAsyncRequests:           []*proto.PublishRequest{},
+		publishToSubjectRequests:       []*proto.PublishToSubjectRequest{},
+		setCursorRequests:              []*proto.SetCursorRequest{},
+		fetchCursorRequests:            []*proto.FetchCursorRequest{},
+		fetchPartitionMetadataRequests: []*proto.FetchPartitionMetadataRequest{},
 	}
 }
 
@@ -294,6 +296,12 @@ func (m *mockAPI) GetFetchMetadataRequests() []*proto.FetchMetadataRequest {
 	return m.fetchMetadataRequests
 }
 
+func (m *mockAPI) GetFetchPartitionMetadataRequests() []*proto.FetchPartitionMetadataRequest {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.fetchPartitionMetadataRequests
+}
+
 func (m *mockAPI) getResponse() interface{} {
 	if len(m.responses) == 0 {
 		return nil
@@ -393,7 +401,16 @@ func (m *mockAPI) FetchMetadata(ctx context.Context, in *proto.FetchMetadataRequ
 }
 
 func (m *mockAPI) FetchPartitionMetadata(ctx context.Context, in *proto.FetchPartitionMetadataRequest) (*proto.FetchPartitionMetadataResponse, error) {
-	return nil, errors.New("not implemented")
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.fetchPartitionMetadataRequests = append(m.fetchPartitionMetadataRequests, in)
+	if m.fetchPartitionMetadataErr != nil {
+		err := m.fetchPartitionMetadataErr
+		m.fetchPartitionMetadataErr = nil
+		return nil, err
+	}
+	resp := m.getResponse()
+	return resp.(*proto.FetchPartitionMetadataResponse), nil
 }
 
 func (m *mockAPI) Publish(ctx context.Context, in *proto.PublishRequest) (*proto.PublishResponse, error) {

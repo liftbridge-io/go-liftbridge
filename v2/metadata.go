@@ -92,6 +92,18 @@ func (b *BrokerInfo) Addr() string {
 	return fmt.Sprintf("%s:%d", b.host, b.port)
 }
 
+// PartitionMetadata ontains an immutable snapshot of information for a partition
+type PartitionMetadata struct {
+	id            int32
+	leader        string
+	replicas      []string
+	isr           []string
+	highWatermark int64
+	newestOffset  int64
+	paused        bool
+	lastUpdated   time.Time
+}
+
 // Metadata contains an immutable snapshot of information for a cluster and
 // subset of streams.
 type Metadata struct {
