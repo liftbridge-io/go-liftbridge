@@ -120,6 +120,7 @@ type mockAPI struct {
 	fetchCursorRequests            []*proto.FetchCursorRequest
 	fetchPartitionMetadataRequests []*proto.FetchPartitionMetadataRequest
 	responses                      []interface{}
+	responsesMap                   map[string]interface{}
 	messages                       []*proto.Message
 	createStreamErr                error
 	deleteStreamErr                error
@@ -149,6 +150,7 @@ func newMockAPI() *mockAPI {
 		setCursorRequests:              []*proto.SetCursorRequest{},
 		fetchCursorRequests:            []*proto.FetchCursorRequest{},
 		fetchPartitionMetadataRequests: []*proto.FetchPartitionMetadataRequest{},
+		responsesMap:                   make(map[string]interface{}),
 	}
 }
 
@@ -156,6 +158,28 @@ func (m *mockAPI) SetupMockResponse(responses ...interface{}) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.responses = responses
+}
+
+func (m *mockAPI) SetupMockCreateStreamResponse(responses interface{}) {
+	m.responsesMap["CreateStream"] = responses
+}
+
+func (m *mockAPI) SetupMockFetchMetadataResponse(responses interface{}) {
+	m.responsesMap["FetchMetadata"] = responses
+}
+
+func (m *mockAPI) SetupMockFetchCursorResponse(responses interface{}) {
+	m.responsesMap["FetchCursor"] = responses
+}
+
+func (m *mockAPI) SetupMockFetchPartitionMetadataResponse(responses interface{}) {
+	m.responsesMap["FetchPartitionMetadata"] = responses
+}
+
+func (m *mockAPI) AppendMockResponse(responses ...interface{}) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.responses = append(m.responses, responses...)
 }
 
 func (m *mockAPI) SetupMockCreateStreamError(err error) {
@@ -320,7 +344,7 @@ func (m *mockAPI) CreateStream(ctx context.Context, in *proto.CreateStreamReques
 		m.createStreamErr = nil
 		return nil, err
 	}
-	resp := m.getResponse()
+	resp := m.responsesMap["CreateStream"]
 	return resp.(*proto.CreateStreamResponse), nil
 }
 
@@ -396,7 +420,7 @@ func (m *mockAPI) FetchMetadata(ctx context.Context, in *proto.FetchMetadataRequ
 		m.fetchMetadataErr = nil
 		return nil, err
 	}
-	resp := m.getResponse()
+	resp := m.responsesMap["FetchMetadata"]
 	return resp.(*proto.FetchMetadataResponse), nil
 }
 
@@ -406,10 +430,9 @@ func (m *mockAPI) FetchPartitionMetadata(ctx context.Context, in *proto.FetchPar
 	m.fetchPartitionMetadataRequests = append(m.fetchPartitionMetadataRequests, in)
 	if m.fetchPartitionMetadataErr != nil {
 		err := m.fetchPartitionMetadataErr
-		m.fetchPartitionMetadataErr = nil
 		return nil, err
 	}
-	resp := m.getResponse()
+	resp := m.responsesMap["FetchPartitionMetadata"]
 	return resp.(*proto.FetchPartitionMetadataResponse), nil
 }
 
@@ -485,9 +508,8 @@ func (m *mockAPI) FetchCursor(ctx context.Context, in *proto.FetchCursorRequest)
 	m.fetchCursorRequests = append(m.fetchCursorRequests, in)
 	if m.fetchCursorErr != nil {
 		err := m.fetchCursorErr
-		m.fetchCursorErr = nil
 		return nil, err
 	}
-	resp := m.getResponse()
+	resp := m.responsesMap["FetchCursor"]
 	return resp.(*proto.FetchCursorResponse), nil
 }

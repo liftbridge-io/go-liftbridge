@@ -120,7 +120,7 @@ func TestCreateStream(t *testing.T) {
 	require.Equal(t, int32(2), req.ReplicationFactor)
 	require.Equal(t, int32(0), req.Partitions)
 
-	server.SetupMockResponse(new(proto.CreateStreamResponse))
+	server.SetupMockCreateStreamResponse(new(proto.CreateStreamResponse))
 
 	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar",
 		Group("group"), MaxReplication(), Partitions(3)))
@@ -1534,7 +1534,7 @@ func TestFetchCursor(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -1559,9 +1559,10 @@ func TestFetchCursor(t *testing.T) {
 			},
 		}},
 	}
+	server.SetupMockFetchMetadataResponse(metadataResp)
 
 	resp := &proto.FetchCursorResponse{Offset: 11}
-	server.SetupMockResponse(metadataResp, resp)
+	server.SetupMockFetchCursorResponse(resp)
 
 	offset, err := client.FetchCursor(context.Background(), "foo", "bar", 1)
 	require.NoError(t, err)
@@ -1580,7 +1581,7 @@ func TestFetchCursorNotLeader(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -1605,9 +1606,8 @@ func TestFetchCursorNotLeader(t *testing.T) {
 			},
 		}},
 	}
-	for i := 0; i < 5; i++ {
-		server.AppendMockResponse(metadataResp)
-	}
+
+	server.SetupMockFetchMetadataResponse(metadataResp)
 
 	server.SetupMockFetchCursorError(status.Error(codes.FailedPrecondition, "server is not partition leader"))
 
@@ -1638,7 +1638,7 @@ func TestFetchPartitionMetadata(t *testing.T) {
 			},
 		}},
 	}
-	server.SetupMockResponse(metadataResp)
+	server.SetupMockFetchMetadataResponse(metadataResp)
 
 	partitionMetadataResp := &proto.FetchPartitionMetadataResponse{
 		Metadata: &proto.PartitionMetadata{
@@ -1650,7 +1650,7 @@ func TestFetchPartitionMetadata(t *testing.T) {
 			NewestOffset:  105,
 		},
 	}
-	server.SetupMockResponse(partitionMetadataResp)
+	server.SetupMockFetchPartitionMetadataResponse(partitionMetadataResp)
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -1658,7 +1658,7 @@ func TestFetchPartitionMetadata(t *testing.T) {
 
 	resp, err := client.FetchPartitionMetadata(context.Background(), "foo", 0)
 	require.NoError(t, err)
-	require.Equal(t, "foo", resp.id)
+	require.Equal(t, int64(100), resp.highWatermark)
 
 }
 
