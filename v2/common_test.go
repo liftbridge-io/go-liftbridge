@@ -119,7 +119,7 @@ type mockAPI struct {
 	publishToSubjectRequests  []*proto.PublishToSubjectRequest
 	setCursorRequests         []*proto.SetCursorRequest
 	fetchCursorRequests       []*proto.FetchCursorRequest
-	responses                 []interface{}
+	responses                 map[string]interface{}
 	messages                  []*proto.Message
 	createStreamErr           error
 	deleteStreamErr           error
@@ -133,6 +133,8 @@ type mockAPI struct {
 	publishToSubjectErr       error
 	setCursorErr              error
 	fetchCursorErr            error
+	// autclearError indicates where the mock API shall clear mock error automatically
+	autoClearError bool
 }
 
 func newMockAPI() *mockAPI {
@@ -147,13 +149,49 @@ func newMockAPI() *mockAPI {
 		publishToSubjectRequests:  []*proto.PublishToSubjectRequest{},
 		setCursorRequests:         []*proto.SetCursorRequest{},
 		fetchCursorRequests:       []*proto.FetchCursorRequest{},
+		responses:                 make(map[string]interface{}),
+		autoClearError:            false,
 	}
 }
 
-func (m *mockAPI) SetupMockResponse(responses ...interface{}) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.responses = responses
+func (m *mockAPI) SetupMockCreateStreamResponse(response interface{}) {
+	m.responses["CreateStream"] = response
+}
+
+func (m *mockAPI) SetupMockDeleteStreamResponse(responses interface{}) {
+	m.responses["DeleteStream"] = responses
+}
+
+func (m *mockAPI) SetupMockPausetreamResponse(responses interface{}) {
+	m.responses["PauseStream"] = responses
+}
+
+func (m *mockAPI) SetupMockSetStreamReadonlyResponse(response interface{}) {
+	m.responses["SetStreamReadonly"] = response
+}
+
+func (m *mockAPI) SetupMockSubscribeResponse(responses interface{}) {
+	m.responses["SetSubscribe"] = responses
+}
+
+func (m *mockAPI) SetupMockFetchMetadataResponse(response interface{}) {
+	m.responses["FetchMetadata"] = response
+}
+
+func (m *mockAPI) SetupMockPublishAsyncResponse(responses interface{}) {
+	m.responses["PublishAsync"] = responses
+}
+
+func (m *mockAPI) SetupMockPublishToSubjectResponse(responses interface{}) {
+	m.responses["PublishToSubject"] = responses
+}
+
+func (m *mockAPI) SetupMockSetCursorResponse(responses interface{}) {
+	m.responses["SetCursor"] = responses
+}
+
+func (m *mockAPI) SetupMockFetchCursorRequestsResponse(responses interface{}) {
+	m.responses["FetchCursor"] = responses
 }
 
 func (m *mockAPI) SetupMockCreateStreamError(err error) {
@@ -294,25 +332,18 @@ func (m *mockAPI) GetFetchMetadataRequests() []*proto.FetchMetadataRequest {
 	return m.fetchMetadataRequests
 }
 
-func (m *mockAPI) getResponse() interface{} {
-	if len(m.responses) == 0 {
-		return nil
-	}
-	resp := m.responses[0]
-	m.responses = m.responses[1:]
-	return resp
-}
-
 func (m *mockAPI) CreateStream(ctx context.Context, in *proto.CreateStreamRequest) (*proto.CreateStreamResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.createStreamRequests = append(m.createStreamRequests, in)
 	if m.createStreamErr != nil {
 		err := m.createStreamErr
-		m.createStreamErr = nil
+		if m.autoClearError {
+			m.createStreamErr = nil
+		}
 		return nil, err
 	}
-	resp := m.getResponse()
+	resp := m.responses["CreateStream"]
 	return resp.(*proto.CreateStreamResponse), nil
 }
 
@@ -322,10 +353,12 @@ func (m *mockAPI) DeleteStream(ctx context.Context, in *proto.DeleteStreamReques
 	m.deleteStreamRequests = append(m.deleteStreamRequests, in)
 	if m.deleteStreamErr != nil {
 		err := m.deleteStreamErr
-		m.deleteStreamErr = nil
+		if m.autoClearError {
+			m.deleteStreamErr = nil
+		}
 		return nil, err
 	}
-	resp := m.getResponse()
+	resp := m.responses["DeleteStream"]
 	return resp.(*proto.DeleteStreamResponse), nil
 }
 
@@ -335,10 +368,12 @@ func (m *mockAPI) PauseStream(ctx context.Context, in *proto.PauseStreamRequest)
 	m.pauseStreamRequests = append(m.pauseStreamRequests, in)
 	if m.pauseStreamErr != nil {
 		err := m.pauseStreamErr
-		m.pauseStreamErr = nil
+		if m.autoClearError {
+			m.pauseStreamErr = nil
+		}
 		return nil, err
 	}
-	resp := m.getResponse()
+	resp := m.responses["PauseStream"]
 	return resp.(*proto.PauseStreamResponse), nil
 }
 
@@ -348,10 +383,12 @@ func (m *mockAPI) SetStreamReadonly(ctx context.Context, in *proto.SetStreamRead
 	m.setStreamReadonlyRequests = append(m.setStreamReadonlyRequests, in)
 	if m.setStreamReadonlyErr != nil {
 		err := m.setStreamReadonlyErr
-		m.setStreamReadonlyErr = nil
+		if m.autoClearError {
+			m.setCursorErr = nil
+		}
 		return nil, err
 	}
-	resp := m.getResponse()
+	resp := m.responses["SetStreamReadonly"]
 	return resp.(*proto.SetStreamReadonlyResponse), nil
 }
 
@@ -360,14 +397,18 @@ func (m *mockAPI) Subscribe(in *proto.SubscribeRequest, server proto.API_Subscri
 	m.subscribeRequests = append(m.subscribeRequests, in)
 	if m.subscribeErr != nil {
 		err := m.subscribeErr
-		m.subscribeErr = nil
+		if m.autoClearError {
+			m.subscribeErr = nil
+		}
 		m.mu.Unlock()
 		return err
 	}
 	server.Send(new(proto.Message))
 	if m.subscribeAsyncErr != nil {
 		err := m.subscribeAsyncErr
-		m.subscribeAsyncErr = nil
+		if m.autoClearError {
+			m.subscribeAsyncErr = nil
+		}
 		m.mu.Unlock()
 		return err
 	}
@@ -385,10 +426,12 @@ func (m *mockAPI) FetchMetadata(ctx context.Context, in *proto.FetchMetadataRequ
 	m.fetchMetadataRequests = append(m.fetchMetadataRequests, in)
 	if m.fetchMetadataErr != nil {
 		err := m.fetchMetadataErr
-		m.fetchMetadataErr = nil
+		if m.autoClearError {
+			m.fetchMetadataErr = nil
+		}
 		return nil, err
 	}
-	resp := m.getResponse()
+	resp := m.responses["FetchMetadata"]
 	return resp.(*proto.FetchMetadataResponse), nil
 }
 
@@ -405,6 +448,9 @@ func (m *mockAPI) PublishAsync(stream proto.API_PublishAsyncServer) error {
 	if m.publishAsyncErr != nil {
 		err := m.publishAsyncErr
 		m.publishAsyncErr = nil
+		if m.autoClearError {
+			m.publishAsyncErr = nil
+		}
 		m.mu.Unlock()
 		return err
 	}
@@ -422,7 +468,7 @@ func (m *mockAPI) PublishAsync(stream proto.API_PublishAsyncServer) error {
 		m.mu.Unlock()
 
 		if req.AckPolicy != proto.AckPolicy_NONE {
-			respIface := m.getResponse()
+			respIface := m.responses["PublishAsync"]
 			if respIface == nil {
 				continue
 			}
@@ -442,10 +488,12 @@ func (m *mockAPI) PublishToSubject(ctx context.Context, in *proto.PublishToSubje
 	m.publishToSubjectRequests = append(m.publishToSubjectRequests, in)
 	if m.publishToSubjectErr != nil {
 		err := m.publishToSubjectErr
-		m.publishToSubjectErr = nil
+		if m.autoClearError {
+			m.publishToSubjectErr = nil
+		}
 		return nil, err
 	}
-	resp := m.getResponse()
+	resp := m.responses["PublishToSubject"]
 	return resp.(*proto.PublishToSubjectResponse), nil
 }
 
@@ -455,10 +503,12 @@ func (m *mockAPI) SetCursor(ctx context.Context, in *proto.SetCursorRequest) (*p
 	m.setCursorRequests = append(m.setCursorRequests, in)
 	if m.setCursorErr != nil {
 		err := m.setCursorErr
-		m.setCursorErr = nil
+		if m.autoClearError {
+			m.setCursorErr = nil
+		}
 		return nil, err
 	}
-	resp := m.getResponse()
+	resp := m.responses["SetCursor"]
 	return resp.(*proto.SetCursorResponse), nil
 }
 
@@ -468,9 +518,11 @@ func (m *mockAPI) FetchCursor(ctx context.Context, in *proto.FetchCursorRequest)
 	m.fetchCursorRequests = append(m.fetchCursorRequests, in)
 	if m.fetchCursorErr != nil {
 		err := m.fetchCursorErr
-		m.fetchCursorErr = nil
+		if m.autoClearError {
+			m.fetchCursorErr = nil
+		}
 		return nil, err
 	}
-	resp := m.getResponse()
+	resp := m.responses["FetchCursor"]
 	return resp.(*proto.FetchCursorResponse), nil
 }
