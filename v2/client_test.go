@@ -103,7 +103,7 @@ func TestCreateStream(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -120,7 +120,8 @@ func TestCreateStream(t *testing.T) {
 	require.Equal(t, int32(2), req.ReplicationFactor)
 	require.Equal(t, int32(0), req.Partitions)
 
-	server.SetupMockResponse(new(proto.CreateStreamResponse))
+	server.SetupMockCreateStreamError(nil)
+	server.SetupMockCreateStreamResponse(new(proto.CreateStreamResponse))
 
 	require.NoError(t, client.CreateStream(context.Background(), "foo", "bar",
 		Group("group"), MaxReplication(), Partitions(3)))
@@ -140,7 +141,7 @@ func TestDeleteStream(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -152,7 +153,8 @@ func TestDeleteStream(t *testing.T) {
 	require.Equal(t, ErrNoSuchStream, err)
 	require.Equal(t, "foo", server.GetDeleteStreamRequests()[0].Name)
 
-	server.SetupMockResponse(new(proto.DeleteStreamResponse))
+	server.SetupMockDeleteStreamError(nil)
+	server.SetupMockDeleteStreamResponse(new(proto.DeleteStreamResponse))
 
 	require.NoError(t, client.DeleteStream(context.Background(), "foo"))
 	require.Equal(t, "foo", server.GetDeleteStreamRequests()[1].Name)
@@ -163,7 +165,7 @@ func TestPauseStream(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -178,7 +180,8 @@ func TestPauseStream(t *testing.T) {
 	require.Equal(t, []int32(nil), req.Partitions)
 	require.False(t, req.ResumeAll)
 
-	server.SetupMockResponse(new(proto.PauseStreamResponse))
+	server.SetupMockPauseStreamError(nil)
+	server.SetupMockPausetreamResponse(new(proto.PauseStreamResponse))
 
 	require.NoError(t, client.PauseStream(context.Background(), "foo",
 		PausePartitions(0, 1), ResumeAll()))
@@ -193,7 +196,7 @@ func TestSetStreamReadonly(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -208,7 +211,8 @@ func TestSetStreamReadonly(t *testing.T) {
 	require.Equal(t, []int32(nil), req.Partitions)
 	require.True(t, req.Readonly)
 
-	server.SetupMockResponse(new(proto.SetStreamReadonlyResponse))
+	server.SetupMockSetStreamReadonlyError(nil)
+	server.SetupMockSetStreamReadonlyResponse(new(proto.SetStreamReadonlyResponse))
 
 	require.NoError(t, client.SetStreamReadonly(context.Background(), "foo",
 		ReadonlyPartitions(0, 1), Readonly(false)))
@@ -223,7 +227,7 @@ func TestSubscribe(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -248,7 +252,7 @@ func TestSubscribe(t *testing.T) {
 			},
 		}},
 	}
-	server.SetupMockResponse(metadataResp)
+	server.SetupMockFetchMetadataResponse(metadataResp)
 	timestamp := time.Now().UnixNano()
 	messages := []*proto.Message{
 		{
@@ -298,7 +302,7 @@ func TestSubscribeNoKnownPartition(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -323,7 +327,7 @@ func TestSubscribeNoKnownPartition(t *testing.T) {
 			},
 		}},
 	}
-	server.SetupMockResponse(metadataResp, metadataResp, metadataResp, metadataResp, metadataResp)
+	server.SetupMockFetchMetadataResponse(metadataResp)
 
 	err = client.Subscribe(context.Background(), "foo", func(msg *Message, err error) {}, Partition(1))
 	require.Error(t, err)
@@ -337,7 +341,7 @@ func TestSubscribeNoPartition(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -362,7 +366,7 @@ func TestSubscribeNoPartition(t *testing.T) {
 			},
 		}},
 	}
-	server.SetupMockResponse(metadataResp, metadataResp, metadataResp, metadataResp, metadataResp)
+	server.SetupMockFetchMetadataResponse(metadataResp)
 	server.SetupMockSubscribeError(status.Error(codes.NotFound, "No such partition"))
 
 	err = client.Subscribe(context.Background(), "foo", func(msg *Message, err error) {},
@@ -382,7 +386,7 @@ func TestSubscribeNoKnownStream(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -396,7 +400,7 @@ func TestSubscribeNoKnownStream(t *testing.T) {
 		}},
 		Metadata: []*proto.StreamMetadata{},
 	}
-	server.SetupMockResponse(metadataResp, metadataResp, metadataResp, metadataResp, metadataResp)
+	server.SetupMockFetchMetadataResponse(metadataResp)
 
 	err = client.Subscribe(context.Background(), "foo", func(msg *Message, err error) {})
 	require.Error(t, err)
@@ -410,7 +414,7 @@ func TestSubscribeNoLeader(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -433,7 +437,7 @@ func TestSubscribeNoLeader(t *testing.T) {
 			},
 		}},
 	}
-	server.SetupMockResponse(metadataResp, metadataResp, metadataResp, metadataResp, metadataResp)
+	server.SetupMockFetchMetadataResponse(metadataResp)
 
 	err = client.Subscribe(context.Background(), "foo", func(msg *Message, err error) {})
 	require.Error(t, err)
@@ -444,10 +448,12 @@ func TestSubscribeNoLeader(t *testing.T) {
 
 func TestSubscribeNotLeaderRetry(t *testing.T) {
 	server := newMockServer()
+	server.SetAutoClearError()
+
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -472,7 +478,7 @@ func TestSubscribeNotLeaderRetry(t *testing.T) {
 			},
 		}},
 	}
-	server.SetupMockResponse(metadataResp, metadataResp)
+	server.SetupMockFetchMetadataResponse(metadataResp)
 	timestamp := time.Now().UnixNano()
 	messages := []*proto.Message{
 		{
@@ -521,10 +527,13 @@ func TestSubscribeNotLeaderRetry(t *testing.T) {
 
 func TestSubscribeResubscribe(t *testing.T) {
 	server := newMockServer()
+
+	server.SetAutoClearError()
+
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -549,7 +558,7 @@ func TestSubscribeResubscribe(t *testing.T) {
 			},
 		}},
 	}
-	server.SetupMockResponse(metadataResp, metadataResp)
+	server.SetupMockFetchMetadataResponse(metadataResp)
 	timestamp := time.Now().UnixNano()
 	messages := []*proto.Message{
 		{
@@ -620,7 +629,7 @@ func TestSubscribeStreamDeleted(t *testing.T) {
 			},
 		}},
 	}
-	server.SetupMockResponse(metadataResp, metadataResp)
+	server.SetupMockFetchMetadataResponse(metadataResp)
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -674,7 +683,7 @@ func TestSubscribePartitionPaused(t *testing.T) {
 			},
 		}},
 	}
-	server.SetupMockResponse(metadataResp)
+	server.SetupMockFetchMetadataResponse(metadataResp)
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -704,6 +713,8 @@ func TestSubscribePartitionPaused(t *testing.T) {
 
 func TestSubscribeServerUnavailableRetry(t *testing.T) {
 	server := newMockServer()
+	server.SetAutoClearError()
+
 	defer server.Stop(t)
 	port := server.Start(t)
 
@@ -726,7 +737,7 @@ func TestSubscribeServerUnavailableRetry(t *testing.T) {
 			},
 		}},
 	}
-	server.SetupMockResponse(metadataResp, metadataResp)
+	server.SetupMockFetchMetadataResponse(metadataResp)
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -734,8 +745,11 @@ func TestSubscribeServerUnavailableRetry(t *testing.T) {
 
 	server.Stop(t)
 	server = newMockServer()
+
+	server.SetAutoClearError()
+
 	defer server.Stop(t)
-	server.SetupMockResponse(metadataResp, metadataResp)
+	server.SetupMockFetchMetadataResponse(metadataResp)
 	timestamp := time.Now().UnixNano()
 	messages := []*proto.Message{
 		{
@@ -792,7 +806,7 @@ func TestSubscribeInvalidPartition(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -809,7 +823,7 @@ func TestPublish(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -824,7 +838,7 @@ func TestPublish(t *testing.T) {
 		AckPolicy:        proto.AckPolicy_LEADER,
 	}
 
-	server.SetupMockResponse(&proto.PublishResponse{Ack: expectedAck})
+	server.SetupMockPublishAsyncResponse(&proto.PublishResponse{Ack: expectedAck})
 
 	ack, err := client.Publish(context.Background(), "foo", []byte("hello"))
 	require.NoError(t, err)
@@ -852,7 +866,7 @@ func TestPublishAckPolicyNone(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -885,7 +899,7 @@ func TestPublishAckTimeout(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)},
 		AckWaitTime(time.Nanosecond))
@@ -901,7 +915,7 @@ func TestPublishAsync(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -916,7 +930,7 @@ func TestPublishAsync(t *testing.T) {
 		AckPolicy:        proto.AckPolicy_LEADER,
 	}
 
-	server.SetupMockResponse(&proto.PublishResponse{Ack: expectedAck})
+	server.SetupMockPublishAsyncResponse(&proto.PublishResponse{Ack: expectedAck})
 
 	ackC := make(chan *Ack)
 	err = client.PublishAsync(context.Background(), "foo", []byte("hello"),
@@ -956,7 +970,7 @@ func TestPublishAsyncAckTimeout(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -985,13 +999,13 @@ func TestPublishAsyncPartitionNotFound(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
 	defer client.Close()
 
-	server.SetupMockResponse(&proto.PublishResponse{
+	server.SetupMockPublishAsyncResponse(&proto.PublishResponse{
 		AsyncError: &proto.PublishAsyncError{
 			Code:    proto.PublishAsyncError_NOT_FOUND,
 			Message: "partition not found",
@@ -1018,13 +1032,13 @@ func TestPublishAsyncReadonlyPartition(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
 	defer client.Close()
 
-	server.SetupMockResponse(&proto.PublishResponse{
+	server.SetupMockPublishAsyncResponse(&proto.PublishResponse{
 		AsyncError: &proto.PublishAsyncError{
 			Code:    proto.PublishAsyncError_READONLY,
 			Message: "partition is readonly",
@@ -1051,13 +1065,13 @@ func TestPublishAsyncInternalError(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
 	defer client.Close()
 
-	server.SetupMockResponse(&proto.PublishResponse{
+	server.SetupMockPublishAsyncResponse(&proto.PublishResponse{
 		AsyncError: &proto.PublishAsyncError{
 			Code:    proto.PublishAsyncError_UNKNOWN,
 			Message: "internal error",
@@ -1085,7 +1099,7 @@ func TestPublishToPartition(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -1101,7 +1115,7 @@ func TestPublishToPartition(t *testing.T) {
 		AckPolicy:        proto.AckPolicy_ALL,
 	}
 
-	server.SetupMockResponse(&proto.PublishResponse{Ack: expectedAck})
+	server.SetupMockPublishAsyncResponse(&proto.PublishResponse{Ack: expectedAck})
 
 	ack, err := client.Publish(context.Background(), "foo", []byte("hello"),
 		ToPartition(1), Key([]byte("key")), AckPolicyAll(), Header("foo", []byte("bar")))
@@ -1156,20 +1170,20 @@ func TestPublishRoundRobin(t *testing.T) {
 			},
 		}},
 	}
-	server.SetupMockResponse(metadataResp)
+	server.SetupMockFetchMetadataResponse(metadataResp)
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
 	defer client.Close()
 
-	server.SetupMockResponse(&proto.PublishResponse{
+	server.SetupMockPublishAsyncResponse(&proto.PublishResponse{
 		Ack: &proto.Ack{},
 	})
 	_, err = client.Publish(context.Background(), "foo", []byte("hello"),
 		PartitionByRoundRobin())
 	require.NoError(t, err)
 
-	server.SetupMockResponse(&proto.PublishResponse{
+	server.SetupMockPublishToSubjectResponse(&proto.PublishResponse{
 		Ack: &proto.Ack{},
 	})
 	_, err = client.Publish(context.Background(), "foo", []byte("hello"),
@@ -1194,7 +1208,7 @@ func TestPublishToSubject(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -1210,7 +1224,7 @@ func TestPublishToSubject(t *testing.T) {
 		AckPolicy:        proto.AckPolicy_LEADER,
 	}
 
-	server.SetupMockResponse(&proto.PublishToSubjectResponse{Ack: expectedAck})
+	server.SetupMockPublishToSubjectResponse(&proto.PublishToSubjectResponse{Ack: expectedAck})
 
 	ack, err := client.PublishToSubject(context.Background(), "foo", []byte("hello"), Key([]byte("key")))
 	require.NoError(t, err)
@@ -1237,7 +1251,7 @@ func TestPublishToSubjectAckTimeout(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -1273,7 +1287,7 @@ func TestFetchMetadata(t *testing.T) {
 			},
 		}},
 	}
-	server.SetupMockResponse(metadataResp, metadataResp)
+	server.SetupMockFetchMetadataResponse(metadataResp)
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -1327,7 +1341,7 @@ func TestSubscribeDisconnectError(t *testing.T) {
 			},
 		}},
 	}
-	server.SetupMockResponse(metadataResp, metadataResp)
+	server.SetupMockFetchMetadataResponse(metadataResp)
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)}, ResubscribeWaitTime(0))
 	require.NoError(t, err)
@@ -1371,7 +1385,7 @@ func TestResubscribeFail(t *testing.T) {
 			},
 		}},
 	}
-	server.SetupMockResponse(metadataResp, metadataResp)
+	server.SetupMockFetchMetadataResponse(metadataResp)
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)},
 		ResubscribeWaitTime(time.Millisecond))
@@ -1451,7 +1465,7 @@ func TestSetCursor(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -1476,8 +1490,8 @@ func TestSetCursor(t *testing.T) {
 			},
 		}},
 	}
-
-	server.SetupMockResponse(metadataResp, new(proto.SetCursorResponse))
+	server.SetupMockFetchMetadataResponse(metadataResp)
+	server.SetupMockSetCursorResponse(new(proto.SetCursorResponse))
 
 	err = client.SetCursor(context.Background(), "foo", "bar", 1, 5)
 	require.NoError(t, err)
@@ -1496,7 +1510,7 @@ func TestSetCursorNotLeader(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -1522,7 +1536,7 @@ func TestSetCursorNotLeader(t *testing.T) {
 		}},
 	}
 
-	server.SetupMockResponse(metadataResp)
+	server.SetupMockFetchMetadataResponse(metadataResp)
 	server.SetupMockSetCursorError(status.Error(codes.FailedPrecondition, "server is not partition leader"))
 
 	err = client.SetCursor(context.Background(), "foo", "bar", 2, 5)
@@ -1534,7 +1548,7 @@ func TestFetchCursor(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -1561,7 +1575,8 @@ func TestFetchCursor(t *testing.T) {
 	}
 
 	resp := &proto.FetchCursorResponse{Offset: 11}
-	server.SetupMockResponse(metadataResp, resp)
+	server.SetupMockFetchMetadataResponse(metadataResp)
+	server.SetupMockFetchCursorRequestsResponse(resp)
 
 	offset, err := client.FetchCursor(context.Background(), "foo", "bar", 1)
 	require.NoError(t, err)
@@ -1580,7 +1595,7 @@ func TestFetchCursorNotLeader(t *testing.T) {
 	defer server.Stop(t)
 	port := server.Start(t)
 
-	server.SetupMockResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
 
 	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
 	require.NoError(t, err)
@@ -1606,7 +1621,7 @@ func TestFetchCursorNotLeader(t *testing.T) {
 		}},
 	}
 
-	server.SetupMockResponse(metadataResp)
+	server.SetupMockFetchMetadataResponse(metadataResp)
 	server.SetupMockFetchCursorError(status.Error(codes.FailedPrecondition, "server is not partition leader"))
 
 	_, err = client.FetchCursor(context.Background(), "foo", "bar", 2)
