@@ -154,6 +154,13 @@ func newMockAPI() *mockAPI {
 	}
 }
 
+// SetAutoClearError activate auto clearing mock error
+func (m *mockAPI) SetAutoClearError() {
+	m.mu.Lock()
+	m.autoClearError = true
+	m.mu.Unlock()
+}
+
 func (m *mockAPI) SetupMockCreateStreamResponse(response interface{}) {
 	m.responses["CreateStream"] = response
 }

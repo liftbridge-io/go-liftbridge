@@ -448,10 +448,7 @@ func TestSubscribeNoLeader(t *testing.T) {
 
 func TestSubscribeNotLeaderRetry(t *testing.T) {
 	server := newMockServer()
-	// Set autoClearError for testing retry requests
-	server.mu.Lock()
-	server.autoClearError = true
-	server.mu.Unlock()
+	server.SetAutoClearError()
 
 	defer server.Stop(t)
 	port := server.Start(t)
@@ -531,10 +528,7 @@ func TestSubscribeNotLeaderRetry(t *testing.T) {
 func TestSubscribeResubscribe(t *testing.T) {
 	server := newMockServer()
 
-	// Set autoClearError for testing retry requests
-	server.mu.Lock()
-	server.autoClearError = true
-	server.mu.Unlock()
+	server.SetAutoClearError()
 
 	defer server.Stop(t)
 	port := server.Start(t)
@@ -719,11 +713,7 @@ func TestSubscribePartitionPaused(t *testing.T) {
 
 func TestSubscribeServerUnavailableRetry(t *testing.T) {
 	server := newMockServer()
-	// Set autoClearError for testing retry requests
-
-	server.mu.Lock()
-	server.autoClearError = true
-	server.mu.Unlock()
+	server.SetAutoClearError()
 
 	defer server.Stop(t)
 	port := server.Start(t)
@@ -756,10 +746,7 @@ func TestSubscribeServerUnavailableRetry(t *testing.T) {
 	server.Stop(t)
 	server = newMockServer()
 
-	// Set autoClearError for testing retry requests
-	server.mu.Lock()
-	server.autoClearError = true
-	server.mu.Unlock()
+	server.SetAutoClearError()
 
 	defer server.Stop(t)
 	server.SetupMockFetchMetadataResponse(metadataResp)
