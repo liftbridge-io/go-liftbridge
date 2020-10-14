@@ -1199,13 +1199,13 @@ func (c *client) FetchPartitionMetadata(ctx context.Context, stream string, part
 			return err
 		}
 
-		partitionMetadata.id = resp.GetMetadata().GetId()
-		partitionMetadata.leader = resp.GetMetadata().GetLeader()
-		partitionMetadata.replicas = resp.GetMetadata().GetIsr()
-		partitionMetadata.isr = resp.GetMetadata().GetIsr()
-		partitionMetadata.highWatermark = resp.GetMetadata().GetHighWatermark()
-		partitionMetadata.newestOffset = resp.GetMetadata().GetNewestOffset()
-		partitionMetadata.paused = resp.GetMetadata().GetPaused()
+		partitionMetadata.ID = resp.GetMetadata().GetId()
+		partitionMetadata.Leader = resp.GetMetadata().GetLeader()
+		partitionMetadata.Replicas = resp.GetMetadata().GetIsr()
+		partitionMetadata.Isr = resp.GetMetadata().GetIsr()
+		partitionMetadata.HighWatermark = resp.GetMetadata().GetHighWatermark()
+		partitionMetadata.NewestOffset = resp.GetMetadata().GetNewestOffset()
+		partitionMetadata.Paused = resp.GetMetadata().GetPaused()
 
 		return nil
 	}, stream, partition)

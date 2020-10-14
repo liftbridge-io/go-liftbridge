@@ -94,14 +94,14 @@ func (b *BrokerInfo) Addr() string {
 
 // PartitionMetadata ontains an immutable snapshot of information for a partition
 type PartitionMetadata struct {
-	id            int32
-	leader        string
-	replicas      []string
-	isr           []string
-	highWatermark int64
-	newestOffset  int64
-	paused        bool
-	lastUpdated   time.Time
+	ID            int32
+	Leader        string
+	Replicas      []string
+	Isr           []string
+	HighWatermark int64
+	NewestOffset  int64
+	Paused        bool
+	LastUpdated   time.Time
 }
 
 // Metadata contains an immutable snapshot of information for a cluster and

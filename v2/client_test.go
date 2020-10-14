@@ -1539,7 +1539,6 @@ func TestSetCursorNotLeader(t *testing.T) {
 	server.SetupMockFetchMetadataResponse(metadataResp)
 	server.SetupMockSetCursorError(status.Error(codes.FailedPrecondition, "server is not partition leader"))
 
-	server.SetupMockSetCursorError(status.Error(codes.FailedPrecondition, "server is not partition leader"))
 	err = client.SetCursor(context.Background(), "foo", "bar", 2, 5)
 	require.Error(t, err)
 }
@@ -1574,7 +1573,6 @@ func TestFetchCursor(t *testing.T) {
 			},
 		}},
 	}
-	server.SetupMockFetchMetadataResponse(metadataResp)
 
 	resp := &proto.FetchCursorResponse{Offset: 11}
 	server.SetupMockFetchMetadataResponse(metadataResp)
@@ -1673,8 +1671,8 @@ func TestFetchPartitionMetadata(t *testing.T) {
 
 	resp, err := client.FetchPartitionMetadata(context.Background(), "foo", 0)
 	require.NoError(t, err)
-	require.Equal(t, int64(100), resp.highWatermark)
-	require.Equal(t, int64(105), resp.newestOffset)
+	require.Equal(t, int64(100), resp.HighWatermark)
+	require.Equal(t, int64(105), resp.NewestOffset)
 
 }
 
