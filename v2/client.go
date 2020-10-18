@@ -483,7 +483,7 @@ type Client interface {
 	FetchCursor(ctx context.Context, id, stream string, partition int32) (int64, error)
 
 	// FetchPartitionMetadata retrieves the metadata of a particular partition
-	FetchPartitionMetadata(ctx context.Context, stream string, partition int32) (*PartitionMetadata, error)
+	FetchPartitionMetadata(ctx context.Context, stream string, partition int32) (*PartitionInfo, error)
 }
 
 // client implements the Client interface. It maintains a pool of connections
@@ -1188,24 +1188,37 @@ func (c *client) FetchMetadata(ctx context.Context) (*Metadata, error) {
 
 // FetchPartitionMetadata returns the metadata of the partition. This is sent to
 // the partition's leader
-func (c *client) FetchPartitionMetadata(ctx context.Context, stream string, partition int32) (*PartitionMetadata, error) {
+func (c *client) FetchPartitionMetadata(ctx context.Context, stream string, partition int32) (*PartitionInfo, error) {
 	var (
-		req               = &proto.FetchPartitionMetadataRequest{Stream: stream, Partition: partition}
-		partitionMetadata = &PartitionMetadata{}
+		req           = &proto.FetchPartitionMetadataRequest{Stream: stream, Partition: partition}
+		partitionInfo = &PartitionInfo{}
 	)
+
 	err := c.doResilientLeaderRPC(ctx, func(client proto.APIClient) error {
 		resp, err := client.FetchPartitionMetadata(ctx, req)
 		if err != nil {
 			return err
 		}
+		// Get broker info from metadata
+		brokers := c.metadata.metadata.brokers
 
-		partitionMetadata.ID = resp.GetMetadata().GetId()
-		partitionMetadata.Leader = resp.GetMetadata().GetLeader()
-		partitionMetadata.Replicas = resp.GetMetadata().GetIsr()
-		partitionMetadata.Isr = resp.GetMetadata().GetIsr()
-		partitionMetadata.HighWatermark = resp.GetMetadata().GetHighWatermark()
-		partitionMetadata.NewestOffset = resp.GetMetadata().GetNewestOffset()
-		partitionMetadata.Paused = resp.GetMetadata().GetPaused()
+		leader := resp.GetMetadata().GetLeader()
+		replicas := resp.GetMetadata().GetReplicas()
+		isr := resp.GetMetadata().GetIsr()
+
+		// complement replicas, isr with broker info
+
+		replicasInfo := make([]*BrokerInfo, 0, len(replicas))
+		isrInfo := make([]*BrokerInfo, 0, len(isr))
+		leaderInfo := brokers[leader]
+
+		partitionInfo.id = resp.GetMetadata().GetId()
+		partitionInfo.leader = leaderInfo
+		partitionInfo.replicas = replicasInfo
+		partitionInfo.isr = isrInfo
+		partitionInfo.highWatermark = resp.GetMetadata().GetHighWatermark()
+		partitionInfo.newestOffset = resp.GetMetadata().GetNewestOffset()
+		partitionInfo.paused = resp.GetMetadata().GetPaused()
 
 		return nil
 	}, stream, partition)
@@ -1213,7 +1226,7 @@ func (c *client) FetchPartitionMetadata(ctx context.Context, stream string, part
 	if err != nil {
 		return nil, err
 	}
-	return partitionMetadata, nil
+	return partitionInfo, nil
 }
 
 // SetCursor persists a cursor position for a particular stream partition.

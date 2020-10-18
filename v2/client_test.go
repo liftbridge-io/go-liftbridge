@@ -1671,8 +1671,8 @@ func TestFetchPartitionMetadata(t *testing.T) {
 
 	resp, err := client.FetchPartitionMetadata(context.Background(), "foo", 0)
 	require.NoError(t, err)
-	require.Equal(t, int64(100), resp.HighWatermark)
-	require.Equal(t, int64(105), resp.NewestOffset)
+	require.Equal(t, int64(100), resp.HighWatermark())
+	require.Equal(t, int64(105), resp.NewestOffset())
 
 }
 

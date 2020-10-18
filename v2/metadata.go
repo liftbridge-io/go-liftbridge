@@ -32,11 +32,13 @@ func (s *StreamInfo) Partitions() map[int32]*PartitionInfo {
 
 // PartitionInfo contains information for a Liftbridge stream partition.
 type PartitionInfo struct {
-	id       int32
-	leader   *BrokerInfo
-	replicas []*BrokerInfo
-	isr      []*BrokerInfo
-	paused   bool
+	id            int32
+	leader        *BrokerInfo
+	replicas      []*BrokerInfo
+	isr           []*BrokerInfo
+	highWatermark int64
+	newestOffset  int64
+	paused        bool
 }
 
 // ID of the partition.
@@ -65,6 +67,16 @@ func (p *PartitionInfo) Paused() bool {
 	return p.paused
 }
 
+// HighWatermark returns highwatermark of the partition leader
+func (p *PartitionInfo) HighWatermark() int64 {
+	return p.highWatermark
+}
+
+// NewestOffset returns newestoffset of the partition leader
+func (p *PartitionInfo) NewestOffset() int64 {
+	return p.newestOffset
+}
+
 // BrokerInfo contains information for a Liftbridge cluster node.
 type BrokerInfo struct {
 	id   string
@@ -90,18 +102,6 @@ func (b *BrokerInfo) Port() int32 {
 // Addr returns <host>:<port> for the broker server.
 func (b *BrokerInfo) Addr() string {
 	return fmt.Sprintf("%s:%d", b.host, b.port)
-}
-
-// PartitionMetadata ontains an immutable snapshot of information for a partition
-type PartitionMetadata struct {
-	ID            int32
-	Leader        string
-	Replicas      []string
-	Isr           []string
-	HighWatermark int64
-	NewestOffset  int64
-	Paused        bool
-	LastUpdated   time.Time
 }
 
 // Metadata contains an immutable snapshot of information for a cluster and
