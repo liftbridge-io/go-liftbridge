@@ -13,9 +13,10 @@ import (
 
 // StreamInfo contains information for a Liftbridge stream.
 type StreamInfo struct {
-	subject    string
-	name       string
-	partitions map[int32]*PartitionInfo
+	subject      string
+	name         string
+	partitions   map[int32]*PartitionInfo
+	creationTime time.Time
 }
 
 // GetPartition returns the partition info for the given partition id or nil if
@@ -28,6 +29,11 @@ func (s *StreamInfo) GetPartition(id int32) *PartitionInfo {
 // stream.
 func (s *StreamInfo) Partitions() map[int32]*PartitionInfo {
 	return s.partitions
+}
+
+// CreationTime returns the time when the stream has been created.
+func (s *StreamInfo) CreationTime() time.Time {
+	return s.creationTime
 }
 
 // PartitionInfo contains information for a Liftbridge stream partition.
@@ -223,9 +229,10 @@ func (m *metadataCache) update(ctx context.Context) (*Metadata, error) {
 	streams := make(map[string]*StreamInfo)
 	for _, streamMetadata := range resp.Metadata {
 		stream := &StreamInfo{
-			subject:    streamMetadata.Subject,
-			name:       streamMetadata.Name,
-			partitions: make(map[int32]*PartitionInfo, len(streamMetadata.Partitions)),
+			subject:      streamMetadata.Subject,
+			name:         streamMetadata.Name,
+			partitions:   make(map[int32]*PartitionInfo, len(streamMetadata.Partitions)),
+			creationTime: time.Unix(0, streamMetadata.CreationTimestamp),
 		}
 		for _, partition := range streamMetadata.Partitions {
 			replicas := make([]*BrokerInfo, 0, len(partition.Replicas))
