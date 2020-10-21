@@ -1674,6 +1674,16 @@ func TestFetchPartitionMetadata(t *testing.T) {
 	require.Equal(t, int64(100), resp.HighWatermark())
 	require.Equal(t, int64(105), resp.NewestOffset())
 
+	// Expect broker info exists for leader, isr and replicas
+	broker := &BrokerInfo{id: "a",
+		host: "localhost",
+		port: int32(port)}
+
+	expectedISR := []*BrokerInfo{broker}
+	expectedReplicas := []*BrokerInfo{broker}
+	require.Equal(t, broker, resp.Leader())
+	require.Equal(t, expectedISR, resp.ISR())
+	require.Equal(t, expectedReplicas, resp.Replicas())
 }
 
 func TestFetchPartitionMetadataNotLeader(t *testing.T) {

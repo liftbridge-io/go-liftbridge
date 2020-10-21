@@ -1192,6 +1192,8 @@ func (c *client) FetchPartitionMetadata(ctx context.Context, stream string, part
 	var (
 		req           = &proto.FetchPartitionMetadataRequest{Stream: stream, Partition: partition}
 		partitionInfo = &PartitionInfo{}
+		// ErrBrokerNotFound indicates that a given broker is not found in cached metadata
+		ErrBrokerNotFound = errors.New("Broker is not found in cached metadata")
 	)
 
 	err := c.doResilientLeaderRPC(ctx, func(client proto.APIClient) error {
@@ -1200,7 +1202,7 @@ func (c *client) FetchPartitionMetadata(ctx context.Context, stream string, part
 			return err
 		}
 		// Get broker info from metadata
-		brokers := c.metadata.metadata.brokers
+		brokers := c.metadata.get().brokers
 
 		leader := resp.GetMetadata().GetLeader()
 		replicas := resp.GetMetadata().GetReplicas()
@@ -1210,7 +1212,30 @@ func (c *client) FetchPartitionMetadata(ctx context.Context, stream string, part
 
 		replicasInfo := make([]*BrokerInfo, 0, len(replicas))
 		isrInfo := make([]*BrokerInfo, 0, len(isr))
-		leaderInfo := brokers[leader]
+
+		// populate replicasInfo
+		for _, replica := range replicas {
+			replicaBroker, exist := brokers[replica]
+			if exist == false {
+				return ErrBrokerNotFound
+			}
+			replicasInfo = append(replicasInfo, replicaBroker)
+		}
+
+		// populate isrInfo
+		for _, isr := range isr {
+			isrBroker, exist := brokers[isr]
+			if exist == false {
+				return ErrBrokerNotFound
+			}
+			isrInfo = append(isrInfo, isrBroker)
+		}
+
+		leaderInfo, exist := brokers[leader]
+
+		if exist == false {
+			return ErrBrokerNotFound
+		}
 
 		partitionInfo.id = resp.GetMetadata().GetId()
 		partitionInfo.leader = leaderInfo
