@@ -32,11 +32,13 @@ func (s *StreamInfo) Partitions() map[int32]*PartitionInfo {
 
 // PartitionInfo contains information for a Liftbridge stream partition.
 type PartitionInfo struct {
-	id       int32
-	leader   *BrokerInfo
-	replicas []*BrokerInfo
-	isr      []*BrokerInfo
-	paused   bool
+	id            int32
+	leader        *BrokerInfo
+	replicas      []*BrokerInfo
+	isr           []*BrokerInfo
+	highWatermark int64
+	newestOffset  int64
+	paused        bool
 }
 
 // ID of the partition.
@@ -63,6 +65,16 @@ func (p *PartitionInfo) Leader() *BrokerInfo {
 // Paused returns true if this partition is paused.
 func (p *PartitionInfo) Paused() bool {
 	return p.paused
+}
+
+// HighWatermark returns highwatermark of the partition leader
+func (p *PartitionInfo) HighWatermark() int64 {
+	return p.highWatermark
+}
+
+// NewestOffset returns newestoffset of the partition leader
+func (p *PartitionInfo) NewestOffset() int64 {
+	return p.newestOffset
 }
 
 // BrokerInfo contains information for a Liftbridge cluster node.

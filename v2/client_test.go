@@ -1628,6 +1628,101 @@ func TestFetchCursorNotLeader(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestFetchPartitionMetadata(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+	metadataResp := &proto.FetchMetadataResponse{
+		Brokers: []*proto.Broker{{
+			Id:   "a",
+			Host: "localhost",
+			Port: int32(port),
+		}},
+		Metadata: []*proto.StreamMetadata{{
+			Name:    "foo",
+			Subject: "foo",
+			Partitions: map[int32]*proto.PartitionMetadata{
+				0: {
+					Id:       0,
+					Leader:   "a",
+					Replicas: []string{"a"},
+					Isr:      []string{"a"},
+				},
+			},
+		}},
+	}
+	server.SetupMockFetchMetadataResponse(metadataResp)
+
+	partitionMetadataResp := &proto.FetchPartitionMetadataResponse{
+		Metadata: &proto.PartitionMetadata{
+			Id:            0,
+			Leader:        "a",
+			Replicas:      []string{"a"},
+			Isr:           []string{"a"},
+			HighWatermark: 100,
+			NewestOffset:  105,
+		},
+	}
+	server.SetupMockFetchPartitionMetadataResponse(partitionMetadataResp)
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	resp, err := client.FetchPartitionMetadata(context.Background(), "foo", 0)
+	require.NoError(t, err)
+	require.Equal(t, int64(100), resp.HighWatermark())
+	require.Equal(t, int64(105), resp.NewestOffset())
+
+	// Expect broker info exists for leader, isr and replicas
+	broker := &BrokerInfo{id: "a",
+		host: "localhost",
+		port: int32(port)}
+
+	expectedISR := []*BrokerInfo{broker}
+	expectedReplicas := []*BrokerInfo{broker}
+	require.Equal(t, broker, resp.Leader())
+	require.Equal(t, expectedISR, resp.ISR())
+	require.Equal(t, expectedReplicas, resp.Replicas())
+}
+
+func TestFetchPartitionMetadataNotLeader(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	metadataResp := &proto.FetchMetadataResponse{
+		Brokers: []*proto.Broker{{
+			Id:   "a",
+			Host: "localhost",
+			Port: int32(port),
+		}},
+		Metadata: []*proto.StreamMetadata{{
+			Name:    "foo",
+			Subject: "foo",
+			Partitions: map[int32]*proto.PartitionMetadata{
+				0: {
+					Id:       0,
+					Leader:   "a",
+					Replicas: []string{"a"},
+					Isr:      []string{"a"},
+				},
+			},
+		}},
+	}
+
+	server.SetupMockFetchMetadataResponse(metadataResp)
+	server.SetupMockFetchPartitionMetadataError(status.Error(codes.FailedPrecondition, "server is not partition leader"))
+	_, err = client.FetchPartitionMetadata(context.Background(), "foo", 0)
+	require.Error(t, err)
+}
+
 func ExampleConnect() {
 	addr := "localhost:9292"
 	client, err := Connect([]string{addr})

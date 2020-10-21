@@ -481,6 +481,9 @@ type Client interface {
 	// FetchCursor retrieves a cursor position for a particular stream
 	// partition. It returns -1 if the cursor does not exist.
 	FetchCursor(ctx context.Context, id, stream string, partition int32) (int64, error)
+
+	// FetchPartitionMetadata retrieves the metadata of a particular partition
+	FetchPartitionMetadata(ctx context.Context, stream string, partition int32) (*PartitionInfo, error)
 }
 
 // client implements the Client interface. It maintains a pool of connections
@@ -1183,6 +1186,74 @@ func (c *client) FetchMetadata(ctx context.Context) (*Metadata, error) {
 	return c.metadata.update(ctx)
 }
 
+// FetchPartitionMetadata returns the metadata of the partition. This is sent to
+// the partition's leader
+func (c *client) FetchPartitionMetadata(ctx context.Context, stream string, partition int32) (*PartitionInfo, error) {
+	var (
+		req           = &proto.FetchPartitionMetadataRequest{Stream: stream, Partition: partition}
+		partitionInfo = &PartitionInfo{}
+		// ErrBrokerNotFound indicates that a given broker is not found in cached metadata
+		ErrBrokerNotFound = errors.New("Broker is not found in cached metadata")
+	)
+
+	err := c.doResilientLeaderRPC(ctx, func(client proto.APIClient) error {
+		resp, err := client.FetchPartitionMetadata(ctx, req)
+		if err != nil {
+			return err
+		}
+		// Get broker info from metadata
+		brokers := c.metadata.get().brokers
+
+		leader := resp.GetMetadata().GetLeader()
+		replicas := resp.GetMetadata().GetReplicas()
+		isr := resp.GetMetadata().GetIsr()
+
+		// complement replicas, isr with broker info
+
+		replicasInfo := make([]*BrokerInfo, 0, len(replicas))
+		isrInfo := make([]*BrokerInfo, 0, len(isr))
+
+		// populate replicasInfo
+		for _, replica := range replicas {
+			replicaBroker, exist := brokers[replica]
+			if exist == false {
+				return ErrBrokerNotFound
+			}
+			replicasInfo = append(replicasInfo, replicaBroker)
+		}
+
+		// populate isrInfo
+		for _, isr := range isr {
+			isrBroker, exist := brokers[isr]
+			if exist == false {
+				return ErrBrokerNotFound
+			}
+			isrInfo = append(isrInfo, isrBroker)
+		}
+
+		leaderInfo, exist := brokers[leader]
+
+		if exist == false {
+			return ErrBrokerNotFound
+		}
+
+		partitionInfo.id = resp.GetMetadata().GetId()
+		partitionInfo.leader = leaderInfo
+		partitionInfo.replicas = replicasInfo
+		partitionInfo.isr = isrInfo
+		partitionInfo.highWatermark = resp.GetMetadata().GetHighWatermark()
+		partitionInfo.newestOffset = resp.GetMetadata().GetNewestOffset()
+		partitionInfo.paused = resp.GetMetadata().GetPaused()
+
+		return nil
+	}, stream, partition)
+
+	if err != nil {
+		return nil, err
+	}
+	return partitionInfo, nil
+}
+
 // SetCursor persists a cursor position for a particular stream partition.
 // This can be used to checkpoint a consumer's position in a stream to resume
 // processing later.
@@ -1586,7 +1657,7 @@ func (c *client) doResilientLeaderRPC(ctx context.Context, rpc func(client proto
 		err = rpc(conn)
 		pool.put(conn)
 		if err != nil {
-			if status.Code(err) == codes.Unavailable {
+			if status.Code(err) == codes.Unavailable || status.Code(err) == codes.FailedPrecondition {
 				time.Sleep(50 * time.Millisecond)
 				c.metadata.update(ctx)
 				continue
