@@ -36,16 +36,36 @@ func (s *StreamInfo) CreationTime() time.Time {
 	return s.creationTime
 }
 
+// PartitionEventTimestamps contains the first and latest times when a partition
+// event has occurred.
+type PartitionEventTimestamps struct {
+	firstTime  time.Time
+	latestTime time.Time
+}
+
+// FirstTime returns the time when the first event occurred.
+func (e PartitionEventTimestamps) FirstTime() time.Time {
+	return e.firstTime
+}
+
+// LatestTime returns the time when the latest event occurred.
+func (e PartitionEventTimestamps) LatestTime() time.Time {
+	return e.latestTime
+}
+
 // PartitionInfo contains information for a Liftbridge stream partition.
 type PartitionInfo struct {
-	id            int32
-	leader        *BrokerInfo
-	replicas      []*BrokerInfo
-	isr           []*BrokerInfo
-	highWatermark int64
-	newestOffset  int64
-	paused        bool
-	readonly      bool
+	id                         int32
+	leader                     *BrokerInfo
+	replicas                   []*BrokerInfo
+	isr                        []*BrokerInfo
+	highWatermark              int64
+	newestOffset               int64
+	paused                     bool
+	readonly                   bool
+	messagesReceivedTimestamps PartitionEventTimestamps
+	pauseTimestamps            PartitionEventTimestamps
+	readonlyTimestamps         PartitionEventTimestamps
 }
 
 // ID of the partition.
@@ -87,6 +107,24 @@ func (p *PartitionInfo) Paused() bool {
 // Readonly returns true if this partition is read-only.
 func (p *PartitionInfo) Readonly() bool {
 	return p.readonly
+}
+
+// MessagesReceivedTimestamps returns the first and latest times a message was
+// received on this partition.
+func (p *PartitionInfo) MessagesReceivedTimestamps() PartitionEventTimestamps {
+	return p.messagesReceivedTimestamps
+}
+
+// PauseTimestamps returns the first and latest time this partition was paused
+// or resumed.
+func (p *PartitionInfo) PauseTimestamps() PartitionEventTimestamps {
+	return p.pauseTimestamps
+}
+
+// ReadonlyTimestamps returns the first and latest time this partition had its
+// read-only status changed.
+func (p *PartitionInfo) ReadonlyTimestamps() PartitionEventTimestamps {
+	return p.readonlyTimestamps
 }
 
 // BrokerInfo contains information for a Liftbridge cluster node.

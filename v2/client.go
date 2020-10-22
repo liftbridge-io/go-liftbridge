@@ -1204,9 +1204,10 @@ func (c *client) FetchPartitionMetadata(ctx context.Context, stream string, part
 		// Get broker info from metadata
 		brokers := c.metadata.get().brokers
 
-		leader := resp.GetMetadata().GetLeader()
-		replicas := resp.GetMetadata().GetReplicas()
-		isr := resp.GetMetadata().GetIsr()
+		metadata := resp.GetMetadata()
+		leader := metadata.GetLeader()
+		replicas := metadata.GetReplicas()
+		isr := metadata.GetIsr()
 
 		// complement replicas, isr with broker info
 
@@ -1237,13 +1238,16 @@ func (c *client) FetchPartitionMetadata(ctx context.Context, stream string, part
 			return ErrBrokerNotFound
 		}
 
-		partitionInfo.id = resp.GetMetadata().GetId()
+		partitionInfo.id = metadata.GetId()
 		partitionInfo.leader = leaderInfo
 		partitionInfo.replicas = replicasInfo
 		partitionInfo.isr = isrInfo
-		partitionInfo.highWatermark = resp.GetMetadata().GetHighWatermark()
-		partitionInfo.newestOffset = resp.GetMetadata().GetNewestOffset()
-		partitionInfo.paused = resp.GetMetadata().GetPaused()
+		partitionInfo.highWatermark = metadata.GetHighWatermark()
+		partitionInfo.newestOffset = metadata.GetNewestOffset()
+		partitionInfo.paused = metadata.GetPaused()
+		partitionInfo.messagesReceivedTimestamps = protoToEventTimestamps(metadata.GetMessageTimestamps())
+		partitionInfo.pauseTimestamps = protoToEventTimestamps(metadata.GetPauseTimestamps())
+		partitionInfo.readonlyTimestamps = protoToEventTimestamps(metadata.GetReadonlyTimestamps())
 
 		return nil
 	}, stream, partition)
@@ -1692,4 +1696,22 @@ func dialBroker(addrs []string, opts []grpc.DialOption) (*conn, error) {
 		return nil, err
 	}
 	return newConn(grpcConn), nil
+}
+
+// protoToEventTimestamps returns an event's timestamps for a given proto
+// partition event's timestamps.
+func protoToEventTimestamps(timestamps *proto.PartitionEventTimestamps) PartitionEventTimestamps {
+	var res PartitionEventTimestamps
+
+	if timestamps == nil {
+		return res
+	}
+	if timestamps.FirstTimestamp != 0 {
+		res.firstTime = time.Unix(0, timestamps.FirstTimestamp)
+	}
+	if timestamps.LatestTimestamp != 0 {
+		res.latestTime = time.Unix(0, timestamps.LatestTimestamp)
+	}
+
+	return res
 }
