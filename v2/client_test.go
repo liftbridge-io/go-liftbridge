@@ -1661,7 +1661,7 @@ func TestFetchPartitionMetadata(t *testing.T) {
 			Isr:           []string{"a"},
 			HighWatermark: 100,
 			NewestOffset:  105,
-			MessageTimestamps: &proto.PartitionEventTimestamps{
+			MessagesReceivedTimestamps: &proto.PartitionEventTimestamps{
 				FirstTimestamp:  110,
 				LatestTimestamp: 115,
 			},

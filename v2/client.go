@@ -1245,7 +1245,7 @@ func (c *client) FetchPartitionMetadata(ctx context.Context, stream string, part
 		partitionInfo.highWatermark = metadata.GetHighWatermark()
 		partitionInfo.newestOffset = metadata.GetNewestOffset()
 		partitionInfo.paused = metadata.GetPaused()
-		partitionInfo.messagesReceivedTimestamps = protoToEventTimestamps(metadata.GetMessageTimestamps())
+		partitionInfo.messagesReceivedTimestamps = protoToEventTimestamps(metadata.GetMessagesReceivedTimestamps())
 		partitionInfo.pauseTimestamps = protoToEventTimestamps(metadata.GetPauseTimestamps())
 		partitionInfo.readonlyTimestamps = protoToEventTimestamps(metadata.GetReadonlyTimestamps())
 
