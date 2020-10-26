@@ -13,9 +13,10 @@ import (
 
 // StreamInfo contains information for a Liftbridge stream.
 type StreamInfo struct {
-	subject    string
-	name       string
-	partitions map[int32]*PartitionInfo
+	subject      string
+	name         string
+	partitions   map[int32]*PartitionInfo
+	creationTime time.Time
 }
 
 // GetPartition returns the partition info for the given partition id or nil if
@@ -30,15 +31,41 @@ func (s *StreamInfo) Partitions() map[int32]*PartitionInfo {
 	return s.partitions
 }
 
+// CreationTime returns the time when the stream has been created.
+func (s *StreamInfo) CreationTime() time.Time {
+	return s.creationTime
+}
+
+// PartitionEventTimestamps contains the first and latest times when a partition
+// event has occurred.
+type PartitionEventTimestamps struct {
+	firstTime  time.Time
+	latestTime time.Time
+}
+
+// FirstTime returns the time when the first event occurred.
+func (e PartitionEventTimestamps) FirstTime() time.Time {
+	return e.firstTime
+}
+
+// LatestTime returns the time when the latest event occurred.
+func (e PartitionEventTimestamps) LatestTime() time.Time {
+	return e.latestTime
+}
+
 // PartitionInfo contains information for a Liftbridge stream partition.
 type PartitionInfo struct {
-	id            int32
-	leader        *BrokerInfo
-	replicas      []*BrokerInfo
-	isr           []*BrokerInfo
-	highWatermark int64
-	newestOffset  int64
-	paused        bool
+	id                         int32
+	leader                     *BrokerInfo
+	replicas                   []*BrokerInfo
+	isr                        []*BrokerInfo
+	highWatermark              int64
+	newestOffset               int64
+	paused                     bool
+	readonly                   bool
+	messagesReceivedTimestamps PartitionEventTimestamps
+	pauseTimestamps            PartitionEventTimestamps
+	readonlyTimestamps         PartitionEventTimestamps
 }
 
 // ID of the partition.
@@ -62,11 +89,6 @@ func (p *PartitionInfo) Leader() *BrokerInfo {
 	return p.leader
 }
 
-// Paused returns true if this partition is paused.
-func (p *PartitionInfo) Paused() bool {
-	return p.paused
-}
-
 // HighWatermark returns highwatermark of the partition leader
 func (p *PartitionInfo) HighWatermark() int64 {
 	return p.highWatermark
@@ -75,6 +97,34 @@ func (p *PartitionInfo) HighWatermark() int64 {
 // NewestOffset returns newestoffset of the partition leader
 func (p *PartitionInfo) NewestOffset() int64 {
 	return p.newestOffset
+}
+
+// Paused returns true if this partition is paused.
+func (p *PartitionInfo) Paused() bool {
+	return p.paused
+}
+
+// Readonly returns true if this partition is read-only.
+func (p *PartitionInfo) Readonly() bool {
+	return p.readonly
+}
+
+// MessagesReceivedTimestamps returns the first and latest times a message was
+// received on this partition.
+func (p *PartitionInfo) MessagesReceivedTimestamps() PartitionEventTimestamps {
+	return p.messagesReceivedTimestamps
+}
+
+// PauseTimestamps returns the first and latest time this partition was paused
+// or resumed.
+func (p *PartitionInfo) PauseTimestamps() PartitionEventTimestamps {
+	return p.pauseTimestamps
+}
+
+// ReadonlyTimestamps returns the first and latest time this partition had its
+// read-only status changed.
+func (p *PartitionInfo) ReadonlyTimestamps() PartitionEventTimestamps {
+	return p.readonlyTimestamps
 }
 
 // BrokerInfo contains information for a Liftbridge cluster node.
@@ -217,9 +267,10 @@ func (m *metadataCache) update(ctx context.Context) (*Metadata, error) {
 	streams := make(map[string]*StreamInfo)
 	for _, streamMetadata := range resp.Metadata {
 		stream := &StreamInfo{
-			subject:    streamMetadata.Subject,
-			name:       streamMetadata.Name,
-			partitions: make(map[int32]*PartitionInfo, len(streamMetadata.Partitions)),
+			subject:      streamMetadata.Subject,
+			name:         streamMetadata.Name,
+			partitions:   make(map[int32]*PartitionInfo, len(streamMetadata.Partitions)),
+			creationTime: time.Unix(0, streamMetadata.CreationTimestamp),
 		}
 		for _, partition := range streamMetadata.Partitions {
 			replicas := make([]*BrokerInfo, 0, len(partition.Replicas))
@@ -236,6 +287,7 @@ func (m *metadataCache) update(ctx context.Context) (*Metadata, error) {
 				replicas: replicas,
 				isr:      isr,
 				paused:   partition.Paused,
+				readonly: partition.Readonly,
 			}
 		}
 		streams[stream.name] = stream

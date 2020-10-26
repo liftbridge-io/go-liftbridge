@@ -1661,6 +1661,18 @@ func TestFetchPartitionMetadata(t *testing.T) {
 			Isr:           []string{"a"},
 			HighWatermark: 100,
 			NewestOffset:  105,
+			MessagesReceivedTimestamps: &proto.PartitionEventTimestamps{
+				FirstTimestamp:  110,
+				LatestTimestamp: 115,
+			},
+			PauseTimestamps: &proto.PartitionEventTimestamps{
+				FirstTimestamp:  120,
+				LatestTimestamp: 125,
+			},
+			ReadonlyTimestamps: &proto.PartitionEventTimestamps{
+				FirstTimestamp:  130,
+				LatestTimestamp: 135,
+			},
 		},
 	}
 	server.SetupMockFetchPartitionMetadataResponse(partitionMetadataResp)
@@ -1673,6 +1685,12 @@ func TestFetchPartitionMetadata(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(100), resp.HighWatermark())
 	require.Equal(t, int64(105), resp.NewestOffset())
+	require.Equal(t, time.Unix(0, 110), resp.MessagesReceivedTimestamps().FirstTime())
+	require.Equal(t, time.Unix(0, 115), resp.MessagesReceivedTimestamps().LatestTime())
+	require.Equal(t, time.Unix(0, 120), resp.PauseTimestamps().FirstTime())
+	require.Equal(t, time.Unix(0, 125), resp.PauseTimestamps().LatestTime())
+	require.Equal(t, time.Unix(0, 130), resp.ReadonlyTimestamps().FirstTime())
+	require.Equal(t, time.Unix(0, 135), resp.ReadonlyTimestamps().LatestTime())
 
 	// Expect broker info exists for leader, isr and replicas
 	broker := &BrokerInfo{id: "a",
