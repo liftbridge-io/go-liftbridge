@@ -39,6 +39,13 @@ func (s StartPosition) toProto() proto.StartPosition {
 	return proto.StartPosition(s)
 }
 
+// StopPosition controls where to stop consuming in a stream.
+type StopPosition int32
+
+func (s StopPosition) toProto() proto.StopPosition {
+	return proto.StopPosition(s)
+}
+
 const (
 	defaultMaxConnsPerBroker   = 2
 	defaultKeepAliveTime       = 30 * time.Second
@@ -64,6 +71,10 @@ var (
 	// ErrStreamDeleted is sent to subscribers when the stream they are
 	// subscribed to has been deleted.
 	ErrStreamDeleted = errors.New("stream has been deleted")
+
+	// ErrStreamExhausted is sent to subscribers when the stop position has been
+	// reached.
+	ErrStreamExhausted = errors.New("stream has been exhausted")
 
 	// ErrPartitionPaused is sent to subscribers when the stream partition they
 	// are subscribed to has been paused.
@@ -434,9 +445,12 @@ type Client interface {
 	// Subscribe creates an ephemeral subscription for the given stream. It
 	// begins receiving messages starting at the configured position and waits
 	// for new messages when it reaches the end of the stream. The default
-	// start position is the end of the stream. It returns an
-	// ErrNoSuchPartition if the given stream or partition does not exist. Use
-	// a cancelable Context to close a subscription.
+	// start position is the end of the stream.
+	// ErrNoSuchPartition is returned if the given stream or partition does not
+	// exist.
+	// ErrStreamExhausted is sent to subscribers when the stop position has been
+	// reached.
+	// Use a cancelable Context to close a subscription.
 	Subscribe(ctx context.Context, stream string, handler Handler, opts ...SubscriptionOption) error
 
 	// Publish publishes a new message to the Liftbridge stream. The partition
@@ -895,6 +909,15 @@ type SubscriptionOptions struct {
 	// StartTimestamp sets the stream start position to the given timestamp.
 	StartTimestamp time.Time
 
+	// StopPosition controls where to stop consuming in the stream.
+	StopPosition StopPosition
+
+	// StopOffset sets the stream offset to stop consuming at.
+	StopOffset int64
+
+	// StopTimestamp sets the stream stop position to the given timestamp.
+	StopTimestamp time.Time
+
 	// Partition sets the stream partition to consume.
 	Partition int32
 
@@ -954,6 +977,33 @@ func StartAtLatestReceived() SubscriptionOption {
 func StartAtEarliestReceived() SubscriptionOption {
 	return func(o *SubscriptionOptions) error {
 		o.StartPosition = StartPosition(proto.StartPosition_EARLIEST)
+		return nil
+	}
+}
+
+// StopAtOffset sets the desired stop offset to stop consuming at in the stream.
+func StopAtOffset(offset int64) SubscriptionOption {
+	return func(o *SubscriptionOptions) error {
+		o.StopPosition = StopPosition(proto.StopPosition_STOP_OFFSET)
+		o.StopOffset = offset
+		return nil
+	}
+}
+
+// StopAtTime sets the desired timestamp to stop consuming at in the stream.
+func StopAtTime(stop time.Time) SubscriptionOption {
+	return func(o *SubscriptionOptions) error {
+		o.StopPosition = StopPosition(proto.StopPosition_STOP_TIMESTAMP)
+		o.StopTimestamp = stop
+		return nil
+	}
+}
+
+// StopAtLatestReceived sets the subscription stop position to the last
+// message received in the stream.
+func StopAtLatestReceived() SubscriptionOption {
+	return func(o *SubscriptionOptions) error {
+		o.StopPosition = StopPosition(proto.StopPosition_STOP_LATEST)
 		return nil
 	}
 }
@@ -1474,6 +1524,9 @@ func (c *client) subscribe(ctx context.Context, stream string,
 			StartPosition:  opts.StartPosition.toProto(),
 			StartOffset:    opts.StartOffset,
 			StartTimestamp: opts.StartTimestamp.UnixNano(),
+			StopPosition:   opts.StopPosition.toProto(),
+			StopOffset:     opts.StopOffset,
+			StopTimestamp:  opts.StopTimestamp.UnixNano(),
 			Partition:      opts.Partition,
 			ReadISRReplica: opts.ReadISRReplica,
 			Resume:         opts.Resume,
@@ -1499,9 +1552,13 @@ func (c *client) subscribe(ctx context.Context, stream string,
 			continue
 		}
 		if err != nil {
-			if status.Code(err) == codes.NotFound {
+			switch status.Code(err) {
+			case codes.NotFound:
 				err = ErrNoSuchPartition
+			case codes.ResourceExhausted:
+				err = ErrStreamExhausted
 			}
+
 			return nil, nil, err
 		}
 		return st, func() { pool.put(conn) }, nil
@@ -1553,7 +1610,7 @@ LOOP:
 				err = ErrPartitionPaused
 			case codes.ResourceExhausted:
 				// Indicates the end of a readonly partition has been reached.
-				err = ErrReadonlyPartition
+				err = ErrStreamExhausted
 			}
 			handler(messageFromProto(msg), err)
 		}
