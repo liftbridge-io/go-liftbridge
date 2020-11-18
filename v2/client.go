@@ -72,10 +72,6 @@ var (
 	// subscribed to has been deleted.
 	ErrStreamDeleted = errors.New("stream has been deleted")
 
-	// ErrStreamExhausted is sent to subscribers when the stop position has been
-	// reached.
-	ErrStreamExhausted = errors.New("stream has been exhausted")
-
 	// ErrPartitionPaused is sent to subscribers when the stream partition they
 	// are subscribed to has been paused.
 	ErrPartitionPaused = errors.New("stream partition has been paused")
@@ -83,10 +79,10 @@ var (
 	// ErrAckTimeout indicates a publish ack was not received in time.
 	ErrAckTimeout = errors.New("publish ack timeout")
 
-	// ErrReadonlyPartition is sent to subscribers when the stream partition
-	// they are subscribed to has either been set to readonly or is already
-	// readonly and all messages have been read. It is also returned when
-	// attempting to publish to a readonly partition.
+	// ErrReadonlyPartition is returned when all messages have been read from a
+	// read only stream, or when the subscribed to stop position has been
+	// reached. It is also returned when attempting to publish to a readonly
+	// partition.
 	ErrReadonlyPartition = errors.New("readonly partition")
 )
 
@@ -448,7 +444,8 @@ type Client interface {
 	// start position is the end of the stream.
 	// ErrNoSuchPartition is returned if the given stream or partition does not
 	// exist.
-	// ErrStreamExhausted is sent to subscribers when the stop position has been
+	// ErrReadonlyPartition is return to subscribers when all messages have been
+	// read from a read only stream, or when the configured stop position is
 	// reached.
 	// Use a cancelable Context to close a subscription.
 	Subscribe(ctx context.Context, stream string, handler Handler, opts ...SubscriptionOption) error
@@ -993,6 +990,10 @@ func StopAtOffset(offset int64) SubscriptionOption {
 // StopAtTime sets the desired timestamp to stop consuming at in the stream.
 func StopAtTime(stop time.Time) SubscriptionOption {
 	return func(o *SubscriptionOptions) error {
+		if stop.After(time.Now()) {
+			return errors.New("stop time cannot be in the future")
+		}
+
 		o.StopPosition = StopPosition(proto.StopPosition_STOP_TIMESTAMP)
 		o.StopTimestamp = stop
 		return nil
@@ -1041,12 +1042,16 @@ func Partition(partition int32) SubscriptionOption {
 	}
 }
 
-// Subscribe creates an ephemeral subscription for the given stream. It begins
-// receiving messages starting at the configured position and waits for new
-// messages when it reaches the end of the stream. The default start position
-// is the end of the stream. It returns an ErrNoSuchPartition if the given
-// stream or partition does not exist. Use a cancelable Context to close a
-// subscription.
+// Subscribe creates an ephemeral subscription for the given stream. It
+// begins receiving messages starting at the configured position and waits
+// for new messages when it reaches the end of the stream. The default
+// start position is the end of the stream.
+// ErrNoSuchPartition is returned if the given stream or partition does not
+// exist.
+// ErrReadonlyPartition is return to subscribers when all messages have been
+// read from a read only stream, or when the configured stop position is
+// reached.
+// Use a cancelable Context to close a subscription.
 func (c *client) Subscribe(ctx context.Context, streamName string, handler Handler,
 	options ...SubscriptionOption) (err error) {
 
@@ -1556,7 +1561,7 @@ func (c *client) subscribe(ctx context.Context, stream string,
 			case codes.NotFound:
 				err = ErrNoSuchPartition
 			case codes.ResourceExhausted:
-				err = ErrStreamExhausted
+				err = ErrReadonlyPartition
 			}
 
 			return nil, nil, err
@@ -1610,7 +1615,7 @@ LOOP:
 				err = ErrPartitionPaused
 			case codes.ResourceExhausted:
 				// Indicates the end of a readonly partition has been reached.
-				err = ErrStreamExhausted
+				err = ErrReadonlyPartition
 			}
 			handler(messageFromProto(msg), err)
 		}
