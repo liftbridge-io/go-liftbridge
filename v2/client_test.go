@@ -1276,7 +1276,7 @@ func TestFetchMetadata(t *testing.T) {
 		}},
 		Metadata: []*proto.StreamMetadata{{
 			Name:    "foo",
-			Subject: "foo",
+			Subject: "foo-subject",
 			Partitions: map[int32]*proto.PartitionMetadata{
 				0: {
 					Id:       0,
@@ -1304,6 +1304,8 @@ func TestFetchMetadata(t *testing.T) {
 
 	stream := metadata.GetStream("foo")
 	require.NotNil(t, stream)
+	require.Equal(t, "foo-subject", stream.Subject())
+	require.Equal(t, "foo", stream.Name())
 	require.Len(t, stream.Partitions(), 1)
 	partition := stream.GetPartition(0)
 	require.NotNil(t, partition)
