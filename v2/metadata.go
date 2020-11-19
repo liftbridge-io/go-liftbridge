@@ -19,6 +19,16 @@ type StreamInfo struct {
 	creationTime time.Time
 }
 
+// Subject returns the stream's subject.
+func (s *StreamInfo) Subject() string {
+	return s.subject
+}
+
+// Name returns the stream's name.
+func (s *StreamInfo) Name() string {
+	return s.name
+}
+
 // GetPartition returns the partition info for the given partition id or nil if
 // no such partition exists.
 func (s *StreamInfo) GetPartition(id int32) *PartitionInfo {
