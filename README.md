@@ -17,7 +17,7 @@ Liftbridge provides the following high-level features:
 ## Installation
 
 ```
-$ go get github.com/liftbridge-io/go-liftbridge
+$ go get github.com/liftbridge-io/go-liftbridge/v2
 ```
 
 ## Basic Usage
@@ -28,7 +28,7 @@ package main
 import (
 	"fmt"
 
-	lift "github.com/liftbridge-io/go-liftbridge"
+	lift "github.com/liftbridge-io/go-liftbridge/v2"
 	"golang.org/x/net/context"
 )
 

@@ -39,6 +39,13 @@ func (s StartPosition) toProto() proto.StartPosition {
 	return proto.StartPosition(s)
 }
 
+// StopPosition controls where to stop consuming in a stream.
+type StopPosition int32
+
+func (s StopPosition) toProto() proto.StopPosition {
+	return proto.StopPosition(s)
+}
+
 const (
 	defaultMaxConnsPerBroker   = 2
 	defaultKeepAliveTime       = 30 * time.Second
@@ -72,10 +79,10 @@ var (
 	// ErrAckTimeout indicates a publish ack was not received in time.
 	ErrAckTimeout = errors.New("publish ack timeout")
 
-	// ErrReadonlyPartition is sent to subscribers when the stream partition
-	// they are subscribed to has either been set to readonly or is already
-	// readonly and all messages have been read. It is also returned when
-	// attempting to publish to a readonly partition.
+	// ErrReadonlyPartition is returned when all messages have been read from a
+	// read only stream, or when the subscribed to stop position has been
+	// reached. It is also returned when attempting to publish to a readonly
+	// partition.
 	ErrReadonlyPartition = errors.New("readonly partition")
 )
 
@@ -434,9 +441,13 @@ type Client interface {
 	// Subscribe creates an ephemeral subscription for the given stream. It
 	// begins receiving messages starting at the configured position and waits
 	// for new messages when it reaches the end of the stream. The default
-	// start position is the end of the stream. It returns an
-	// ErrNoSuchPartition if the given stream or partition does not exist. Use
-	// a cancelable Context to close a subscription.
+	// start position is the end of the stream.
+	// ErrNoSuchPartition is returned if the given stream or partition does not
+	// exist.
+	// ErrReadonlyPartition is return to subscribers when all messages have been
+	// read from a read only stream, or when the configured stop position is
+	// reached.
+	// Use a cancelable Context to close a subscription.
 	Subscribe(ctx context.Context, stream string, handler Handler, opts ...SubscriptionOption) error
 
 	// Publish publishes a new message to the Liftbridge stream. The partition
@@ -895,6 +906,15 @@ type SubscriptionOptions struct {
 	// StartTimestamp sets the stream start position to the given timestamp.
 	StartTimestamp time.Time
 
+	// StopPosition controls where to stop consuming in the stream.
+	StopPosition StopPosition
+
+	// StopOffset sets the stream offset to stop consuming at.
+	StopOffset int64
+
+	// StopTimestamp sets the stream stop position to the given timestamp.
+	StopTimestamp time.Time
+
 	// Partition sets the stream partition to consume.
 	Partition int32
 
@@ -958,6 +978,37 @@ func StartAtEarliestReceived() SubscriptionOption {
 	}
 }
 
+// StopAtOffset sets the desired stop offset to stop consuming at in the stream.
+func StopAtOffset(offset int64) SubscriptionOption {
+	return func(o *SubscriptionOptions) error {
+		o.StopPosition = StopPosition(proto.StopPosition_STOP_OFFSET)
+		o.StopOffset = offset
+		return nil
+	}
+}
+
+// StopAtTime sets the desired timestamp to stop consuming at in the stream.
+func StopAtTime(stop time.Time) SubscriptionOption {
+	return func(o *SubscriptionOptions) error {
+		if stop.After(time.Now()) {
+			return errors.New("stop time cannot be in the future")
+		}
+
+		o.StopPosition = StopPosition(proto.StopPosition_STOP_TIMESTAMP)
+		o.StopTimestamp = stop
+		return nil
+	}
+}
+
+// StopAtLatestReceived sets the subscription stop position to the last
+// message received in the stream.
+func StopAtLatestReceived() SubscriptionOption {
+	return func(o *SubscriptionOptions) error {
+		o.StopPosition = StopPosition(proto.StopPosition_STOP_LATEST)
+		return nil
+	}
+}
+
 // ReadISRReplica sets read replica option. If true, the client will request
 // subscription from an random ISR replica instead of subscribing explicitly
 // to partition's leader. As a random ISR replica is given, it may well be the
@@ -991,12 +1042,16 @@ func Partition(partition int32) SubscriptionOption {
 	}
 }
 
-// Subscribe creates an ephemeral subscription for the given stream. It begins
-// receiving messages starting at the configured position and waits for new
-// messages when it reaches the end of the stream. The default start position
-// is the end of the stream. It returns an ErrNoSuchPartition if the given
-// stream or partition does not exist. Use a cancelable Context to close a
-// subscription.
+// Subscribe creates an ephemeral subscription for the given stream. It
+// begins receiving messages starting at the configured position and waits
+// for new messages when it reaches the end of the stream. The default
+// start position is the end of the stream.
+// ErrNoSuchPartition is returned if the given stream or partition does not
+// exist.
+// ErrReadonlyPartition is return to subscribers when all messages have been
+// read from a read only stream, or when the configured stop position is
+// reached.
+// Use a cancelable Context to close a subscription.
 func (c *client) Subscribe(ctx context.Context, streamName string, handler Handler,
 	options ...SubscriptionOption) (err error) {
 
@@ -1204,9 +1259,10 @@ func (c *client) FetchPartitionMetadata(ctx context.Context, stream string, part
 		// Get broker info from metadata
 		brokers := c.metadata.get().brokers
 
-		leader := resp.GetMetadata().GetLeader()
-		replicas := resp.GetMetadata().GetReplicas()
-		isr := resp.GetMetadata().GetIsr()
+		metadata := resp.GetMetadata()
+		leader := metadata.GetLeader()
+		replicas := metadata.GetReplicas()
+		isr := metadata.GetIsr()
 
 		// complement replicas, isr with broker info
 
@@ -1237,13 +1293,16 @@ func (c *client) FetchPartitionMetadata(ctx context.Context, stream string, part
 			return ErrBrokerNotFound
 		}
 
-		partitionInfo.id = resp.GetMetadata().GetId()
+		partitionInfo.id = metadata.GetId()
 		partitionInfo.leader = leaderInfo
 		partitionInfo.replicas = replicasInfo
 		partitionInfo.isr = isrInfo
-		partitionInfo.highWatermark = resp.GetMetadata().GetHighWatermark()
-		partitionInfo.newestOffset = resp.GetMetadata().GetNewestOffset()
-		partitionInfo.paused = resp.GetMetadata().GetPaused()
+		partitionInfo.highWatermark = metadata.GetHighWatermark()
+		partitionInfo.newestOffset = metadata.GetNewestOffset()
+		partitionInfo.paused = metadata.GetPaused()
+		partitionInfo.messagesReceivedTimestamps = protoToEventTimestamps(metadata.GetMessagesReceivedTimestamps())
+		partitionInfo.pauseTimestamps = protoToEventTimestamps(metadata.GetPauseTimestamps())
+		partitionInfo.readonlyTimestamps = protoToEventTimestamps(metadata.GetReadonlyTimestamps())
 
 		return nil
 	}, stream, partition)
@@ -1471,6 +1530,9 @@ func (c *client) subscribe(ctx context.Context, stream string,
 			StartPosition:  opts.StartPosition.toProto(),
 			StartOffset:    opts.StartOffset,
 			StartTimestamp: opts.StartTimestamp.UnixNano(),
+			StopPosition:   opts.StopPosition.toProto(),
+			StopOffset:     opts.StopOffset,
+			StopTimestamp:  opts.StopTimestamp.UnixNano(),
 			Partition:      opts.Partition,
 			ReadISRReplica: opts.ReadISRReplica,
 			Resume:         opts.Resume,
@@ -1496,9 +1558,13 @@ func (c *client) subscribe(ctx context.Context, stream string,
 			continue
 		}
 		if err != nil {
-			if status.Code(err) == codes.NotFound {
+			switch status.Code(err) {
+			case codes.NotFound:
 				err = ErrNoSuchPartition
+			case codes.ResourceExhausted:
+				err = ErrReadonlyPartition
 			}
+
 			return nil, nil, err
 		}
 		return st, func() { pool.put(conn) }, nil
@@ -1693,4 +1759,22 @@ func dialBroker(addrs []string, opts []grpc.DialOption) (*conn, error) {
 		return nil, err
 	}
 	return newConn(grpcConn), nil
+}
+
+// protoToEventTimestamps returns an event's timestamps for a given proto
+// partition event's timestamps.
+func protoToEventTimestamps(timestamps *proto.PartitionEventTimestamps) PartitionEventTimestamps {
+	var res PartitionEventTimestamps
+
+	if timestamps == nil {
+		return res
+	}
+	if timestamps.FirstTimestamp != 0 {
+		res.firstTime = time.Unix(0, timestamps.FirstTimestamp)
+	}
+	if timestamps.LatestTimestamp != 0 {
+		res.latestTime = time.Unix(0, timestamps.LatestTimestamp)
+	}
+
+	return res
 }
