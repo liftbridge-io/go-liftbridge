@@ -310,6 +310,10 @@ type MessageOptions struct {
 	// this is set, any Partitioner will not be used. This is a pointer to
 	// allow distinguishing between unset and 0.
 	Partition *int32
+
+	// ExpectedOffset set the value of the expected offset after publishing the message.
+	// This is required in case Optimistic Concurrency Control is activted
+	ExpectedOffset int64
 }
 
 // MessageOption is a function on the MessageOptions for a Message. These are
@@ -426,6 +430,14 @@ func PartitionByRoundRobin() MessageOption {
 	return PartitionBy(partitionByRoundRobin)
 }
 
+// SetExpectedOffset set the value of expected offset after publishing the message.
+// This is required for optimistic concurrency control
+func SetExpectedOffset(expectedOffset int64) MessageOption {
+	return func(o *MessageOptions) {
+		o.ExpectedOffset = expectedOffset
+	}
+}
+
 // NewMessage returns a serialized message for the given payload and options.
 func NewMessage(value []byte, options ...MessageOption) []byte {
 	opts := &MessageOptions{Headers: make(map[string][]byte)}
@@ -441,6 +453,7 @@ func NewMessage(value []byte, options ...MessageOption) []byte {
 		CorrelationId: opts.CorrelationID,
 		AckPolicy:     opts.AckPolicy.toProto(),
 		Headers:       opts.Headers,
+		Offset:        opts.ExpectedOffset,
 	}, msgTypePublish)
 	if err != nil {
 		panic(err)

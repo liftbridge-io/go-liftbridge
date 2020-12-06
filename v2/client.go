@@ -1399,13 +1399,14 @@ func (c *client) newPublishRequest(ctx context.Context, stream string, value []b
 	}
 
 	return &proto.PublishRequest{
-		Stream:        stream,
-		Partition:     partition,
-		Key:           opts.Key,
-		Value:         value,
-		AckInbox:      opts.AckInbox,
-		CorrelationId: opts.CorrelationID,
-		AckPolicy:     opts.AckPolicy.toProto(),
+		Stream:         stream,
+		Partition:      partition,
+		Key:            opts.Key,
+		Value:          value,
+		AckInbox:       opts.AckInbox,
+		CorrelationId:  opts.CorrelationID,
+		AckPolicy:      opts.AckPolicy.toProto(),
+		ExpectedOffset: opts.ExpectedOffset,
 	}, nil
 }
 
