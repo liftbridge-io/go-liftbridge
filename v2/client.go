@@ -179,6 +179,10 @@ type StreamOptions struct {
 	// before it can be committed. If this is not set, it uses the server
 	// default value.
 	MinISR *int
+
+	// OptimisticConcurrencyControlEna.bled controls the activation of optimistic concurrency control
+	// of the stream
+	OptimisticConcurrencyControlEnabled *bool
 }
 
 func (s *StreamOptions) newRequest(subject, name string) *proto.CreateStreamRequest {
@@ -221,6 +225,9 @@ func (s *StreamOptions) newRequest(subject, name string) *proto.CreateStreamRequ
 	}
 	if s.MinISR != nil {
 		req.MinIsr = &proto.NullableInt32{Value: int32(*s.MinISR)}
+	}
+	if s.OptimisticConcurrencyControlEnabled != nil {
+		req.OptimisticConcurrencyControl = &proto.NullableBool{Value: *s.OptimisticConcurrencyControlEnabled}
 	}
 	return req
 }
@@ -401,6 +408,15 @@ func AutoPauseDisableIfSubscribers(val bool) StreamOption {
 func MinISR(minISR int) StreamOption {
 	return func(o *StreamOptions) error {
 		o.MinISR = &minISR
+		return nil
+	}
+}
+
+// OptimisticConcurrencyControl sets the value of OptimisticConcurrencyControl, which
+// effectively enables the behavior to control concurrency message publish
+func OptimisticConcurrencyControl(val bool) StreamOption {
+	return func(o *StreamOptions) error {
+		o.OptimisticConcurrencyControlEnabled = &val
 		return nil
 	}
 }
