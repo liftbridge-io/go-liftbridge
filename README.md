@@ -100,6 +100,15 @@ client.CreateStream(context.Background(), subject, name,
     lift.RetentionMaxBytes(134217728), lift.CompactEnabled(true))
 ```
 
+Also, the client has the possibilty to create a stream with enforced Optimistic Concurrency Control.
+This will create a stream and enable Optimistic Concurrency Control on that specific stream.
+
+
+```go
+// Create a stream with Optimistic Concurrency Control enabled
+err = client.CreateStream(context.Background(), "foo", stream, lift.OptimisticConcurrencyControl(true))
+
+```
 ### Subscription Start/Replay Options
 
 [Subscriptions](https://github.com/liftbridge-io/liftbridge/blob/master/documentation/concepts.md#subscription)
@@ -190,6 +199,27 @@ client.Publish(ctx, "foo-stream", []byte("hello"),
 client.Publish(context.Background(), "foo-stream", []byte("hello"),
 	lift.AckPolicyNone(), // Don't send an ack
 )
+```
+
+Also, on specific streams where Optimistic Concurrency Control is enabled,
+the client has to publish a message with `ExpectedOffset`. The `ExpectedOffset` is the
+offset that should be on the stream's partition if the message is published successfully.
+
+Note: as the error of concurrency is piggybacked via the `Ack`, so `AckPolicy` has to be set
+to use this feature.
+
+```golang
+	// Publish Async with expected offfset
+	err = client.PublishAsync(context.Background(), "foo", []byte("hello"),
+		func(ack *lift.Ack, err error) {
+			errorC <- err
+		},
+		lift.AckPolicyLeader(),
+		// Correct offset is 0 (first message)
+		lift.SetExpectedOffset(0),
+	)
+	require.NoError(t, err)
+
 ```
 
 `PublishToSubject` sends a message directly to the provided NATS subject. Note
