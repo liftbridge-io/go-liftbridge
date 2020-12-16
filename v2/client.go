@@ -549,6 +549,16 @@ type ClientOptions struct {
 	// can be overridden on individual requests by setting a timeout on the
 	// Context. This defaults to 5 seconds if not set.
 	AckWaitTime time.Duration
+
+	// ReadBufferSize configures the size of the read buffer for connections.
+	// -1 will use the GRPC defaults. See
+	// https://godoc.org/google.golang.org/grpc#WithReadBufferSize.
+	ReadBufferSize int
+
+	// WriteBufferSize configures the size of the write buffer for connections.
+	// -1 will use the GRPC defaults. See
+	// https://godoc.org/google.golang.org/grpc#WithWriteBufferSize.
+	WriteBufferSize int
 }
 
 // Connect will attempt to connect to a Liftbridge server with multiple
@@ -573,6 +583,13 @@ func (o ClientOptions) Connect() (Client, error) {
 	} else {
 		// Otherwise use an insecure connection.
 		opts = append(opts, grpc.WithInsecure())
+	}
+
+	if o.WriteBufferSize >= 0 {
+		opts = append(opts, grpc.WithWriteBufferSize(o.WriteBufferSize))
+	}
+	if o.ReadBufferSize >= 0 {
+		opts = append(opts, grpc.WithReadBufferSize(o.ReadBufferSize))
 	}
 
 	conn, err := dialBroker(o.Brokers, opts)
@@ -619,6 +636,8 @@ func DefaultClientOptions() ClientOptions {
 		KeepAliveTime:       defaultKeepAliveTime,
 		ResubscribeWaitTime: defaultResubscribeWaitTime,
 		AckWaitTime:         defaultAckWaitTime,
+		ReadBufferSize:      -1,
+		WriteBufferSize:     -1,
 	}
 }
 
@@ -658,6 +677,24 @@ func TLSCert(cert string) ClientOption {
 func TLSConfig(config *tls.Config) ClientOption {
 	return func(o *ClientOptions) error {
 		o.TLSConfig = config
+		return nil
+	}
+}
+
+// ReadBufferSize is a ClientOption to set the read buffer size configuration
+// for the client.
+func ReadBufferSize(readBufferSize int) ClientOption {
+	return func(o *ClientOptions) error {
+		o.ReadBufferSize = readBufferSize
+		return nil
+	}
+}
+
+// WriteBufferSize is a ClientOption to set the write buffer size configuration
+// for the client.
+func WriteBufferSize(writeBufferSize int) ClientOption {
+	return func(o *ClientOptions) error {
+		o.WriteBufferSize = writeBufferSize
 		return nil
 	}
 }
