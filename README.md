@@ -100,7 +100,7 @@ client.CreateStream(context.Background(), subject, name,
     lift.RetentionMaxBytes(134217728), lift.CompactEnabled(true))
 ```
 
-Also, the client has the possibilty to create a stream with enforced Optimistic Concurrency Control.
+Also, the client has the possibility to create a stream with enforced Optimistic Concurrency Control.
 This will create a stream and enable Optimistic Concurrency Control on that specific stream.
 
 
@@ -205,11 +205,15 @@ Also, on specific streams where Optimistic Concurrency Control is enabled,
 the client has to publish a message with `ExpectedOffset`. The `ExpectedOffset` is the
 offset that should be on the stream's partition if the message is published successfully.
 
-Note: as the error of concurrency is piggybacked via the `Ack`, so `AckPolicy` has to be set
+*Note*: as the error of concurrency is piggybacked via the `Ack`, so `AckPolicy` has to be set
 to use this feature.
 
+*Note*: by default, Liftbridge concurrency control considers the `ExpectedOffset` value -1 to be the signil
+to indicate default behavior: next offset, i.e: simply skip the concurrency control verification. By default,
+to provide compatibility, the client should make sure that this value is always set to -1 when concurrency control is not used.
+
 ```golang
-	// Publish Async with expected offfset
+	// Publish Async with expected offset
 	err = client.PublishAsync(context.Background(), "foo", []byte("hello"),
 		func(ack *lift.Ack, err error) {
 			errorC <- err

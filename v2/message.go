@@ -313,6 +313,7 @@ type MessageOptions struct {
 
 	// ExpectedOffset set the value of the expected offset after publishing the message.
 	// This is required in case Optimistic Concurrency Control is activted
+	// by default, this value should be set to -1 to indicate next offset.
 	ExpectedOffset int64
 }
 
@@ -430,9 +431,9 @@ func PartitionByRoundRobin() MessageOption {
 	return PartitionBy(partitionByRoundRobin)
 }
 
-// SetExpectedOffset set the value of expected offset after publishing the message.
+// ExpectedOffset set the value of expected offset after publishing the message.
 // This is required for optimistic concurrency control
-func SetExpectedOffset(expectedOffset int64) MessageOption {
+func ExpectedOffset(expectedOffset int64) MessageOption {
 	return func(o *MessageOptions) {
 		o.ExpectedOffset = expectedOffset
 	}
@@ -441,6 +442,11 @@ func SetExpectedOffset(expectedOffset int64) MessageOption {
 // NewMessage returns a serialized message for the given payload and options.
 func NewMessage(value []byte, options ...MessageOption) []byte {
 	opts := &MessageOptions{Headers: make(map[string][]byte)}
+	// set expected offset to -1 to inicate next offset.
+	// this will keep clients that are not yet providing support for Optimistic Concurrency Control
+	// to operate normally.
+	opts.ExpectedOffset = -1
+
 	// TODO: Implement option for CRC32.
 	for _, opt := range options {
 		opt(opts)
