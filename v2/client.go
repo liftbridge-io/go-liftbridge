@@ -179,6 +179,10 @@ type StreamOptions struct {
 	// before it can be committed. If this is not set, it uses the server
 	// default value.
 	MinISR *int
+
+	// OptimisticConcurrencyControl controls the activation of optimistic concurrency control
+	// of the stream
+	OptimisticConcurrencyControl *bool
 }
 
 func (s *StreamOptions) newRequest(subject, name string) *proto.CreateStreamRequest {
@@ -221,6 +225,9 @@ func (s *StreamOptions) newRequest(subject, name string) *proto.CreateStreamRequ
 	}
 	if s.MinISR != nil {
 		req.MinIsr = &proto.NullableInt32{Value: int32(*s.MinISR)}
+	}
+	if s.OptimisticConcurrencyControl != nil {
+		req.OptimisticConcurrencyControl = &proto.NullableBool{Value: *s.OptimisticConcurrencyControl}
 	}
 	return req
 }
@@ -401,6 +408,15 @@ func AutoPauseDisableIfSubscribers(val bool) StreamOption {
 func MinISR(minISR int) StreamOption {
 	return func(o *StreamOptions) error {
 		o.MinISR = &minISR
+		return nil
+	}
+}
+
+// OptimisticConcurrencyControl sets the value of OptimisticConcurrencyControl, which
+// effectively enables the behavior to control concurrency message publish
+func OptimisticConcurrencyControl(val bool) StreamOption {
+	return func(o *StreamOptions) error {
+		o.OptimisticConcurrencyControl = &val
 		return nil
 	}
 }
@@ -1123,6 +1139,12 @@ func (c *client) Publish(ctx context.Context, stream string, value []byte,
 	options ...MessageOption) (*Ack, error) {
 
 	opts := &MessageOptions{Headers: make(map[string][]byte)}
+
+	// set expected offset to -1 to inicate next offset.
+	// this will keep clients that are not yet providing support for Optimistic Concurrency Control
+	// to operate normally.
+	opts.ExpectedOffset = -1
+
 	for _, opt := range options {
 		opt(opts)
 	}
@@ -1163,6 +1185,12 @@ func (c *client) PublishAsync(ctx context.Context, stream string, value []byte,
 	ackHandler AckHandler, options ...MessageOption) error {
 
 	opts := &MessageOptions{Headers: make(map[string][]byte)}
+
+	// set expected offset to -1 to inicate next offset.
+	// this will keep clients that are not yet providing support for Optimistic Concurrency Control
+	// to operate normally.
+	opts.ExpectedOffset = -1
+
 	for _, opt := range options {
 		opt(opts)
 	}
@@ -1495,13 +1523,14 @@ func (c *client) newPublishRequest(ctx context.Context, stream string, value []b
 	}
 
 	return &proto.PublishRequest{
-		Stream:        stream,
-		Partition:     partition,
-		Key:           opts.Key,
-		Value:         value,
-		AckInbox:      opts.AckInbox,
-		CorrelationId: opts.CorrelationID,
-		AckPolicy:     opts.AckPolicy.toProto(),
+		Stream:         stream,
+		Partition:      partition,
+		Key:            opts.Key,
+		Value:          value,
+		AckInbox:       opts.AckInbox,
+		CorrelationId:  opts.CorrelationID,
+		AckPolicy:      opts.AckPolicy.toProto(),
+		ExpectedOffset: opts.ExpectedOffset,
 	}, nil
 }
 
