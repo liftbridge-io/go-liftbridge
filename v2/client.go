@@ -1102,6 +1102,12 @@ func (c *client) Publish(ctx context.Context, stream string, value []byte,
 	options ...MessageOption) (*Ack, error) {
 
 	opts := &MessageOptions{Headers: make(map[string][]byte)}
+
+	// set expected offset to -1 to inicate next offset.
+	// this will keep clients that are not yet providing support for Optimistic Concurrency Control
+	// to operate normally.
+	opts.ExpectedOffset = -1
+
 	for _, opt := range options {
 		opt(opts)
 	}
@@ -1142,6 +1148,12 @@ func (c *client) PublishAsync(ctx context.Context, stream string, value []byte,
 	ackHandler AckHandler, options ...MessageOption) error {
 
 	opts := &MessageOptions{Headers: make(map[string][]byte)}
+
+	// set expected offset to -1 to inicate next offset.
+	// this will keep clients that are not yet providing support for Optimistic Concurrency Control
+	// to operate normally.
+	opts.ExpectedOffset = -1
+
 	for _, opt := range options {
 		opt(opts)
 	}

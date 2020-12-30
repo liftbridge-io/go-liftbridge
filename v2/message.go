@@ -442,7 +442,7 @@ func ExpectedOffset(expectedOffset int64) MessageOption {
 // NewMessage returns a serialized message for the given payload and options.
 func NewMessage(value []byte, options ...MessageOption) []byte {
 	opts := &MessageOptions{Headers: make(map[string][]byte)}
-	// set expected offset to -1 to inicate next offset.
+	// set expected offset to -1 to indicate next offset.
 	// this will keep clients that are not yet providing support for Optimistic Concurrency Control
 	// to operate normally.
 	opts.ExpectedOffset = -1
