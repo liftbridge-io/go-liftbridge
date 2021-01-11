@@ -1408,6 +1408,19 @@ func TestResubscribeFail(t *testing.T) {
 	}
 }
 
+func TestConnectionContextDeadlineExceeded(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	// Use a context with an already exceeded deadline.
+	ctx, cancel := context.WithTimeout(context.Background(), 0)
+	defer cancel()
+
+	_, err := ConnectCtx(ctx, []string{fmt.Sprintf("localhost:%d", port)})
+	require.Equal(t, context.DeadlineExceeded, err)
+}
+
 func TestStreamOptionsNewRequest(t *testing.T) {
 	var (
 		retentionMaxBytes             = int64(1024)

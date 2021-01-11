@@ -577,9 +577,9 @@ type ClientOptions struct {
 	WriteBufferSize int
 }
 
-// Connect will attempt to connect to a Liftbridge server with multiple
+// ConnectCtx will attempt to connect to a Liftbridge server with multiple
 // options.
-func (o ClientOptions) Connect() (Client, error) {
+func (o ClientOptions) ConnectCtx(ctx context.Context) (Client, error) {
 	if len(o.Brokers) == 0 {
 		return nil, errors.New("no addresses provided")
 	}
@@ -608,18 +608,18 @@ func (o ClientOptions) Connect() (Client, error) {
 		opts = append(opts, grpc.WithReadBufferSize(o.ReadBufferSize))
 	}
 
-	conn, err := dialBroker(o.Brokers, opts)
+	conn, err := dialBroker(ctx, o.Brokers, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	asyncConn, err := dialBroker(o.Brokers, opts)
+	asyncConn, err := dialBroker(ctx, o.Brokers, opts)
 	if err != nil {
 		conn.Close()
 		return nil, err
 	}
 
-	asyncStream, err := asyncConn.PublishAsync(context.Background())
+	asyncStream, err := asyncConn.PublishAsync(ctx)
 	if err != nil {
 		conn.Close()
 		asyncConn.Close()
@@ -637,11 +637,17 @@ func (o ClientOptions) Connect() (Client, error) {
 		closed:      make(chan struct{}),
 	}
 	c.metadata = newMetadataCache(o.Brokers, c.doResilientRPC)
-	if _, err := c.metadata.update(context.Background()); err != nil {
+	if _, err := c.metadata.update(ctx); err != nil {
 		return nil, err
 	}
-	go c.dispatchAcks()
+	go c.dispatchAcks(ctx)
 	return c, nil
+}
+
+// Connect will attempt to connect to a Liftbridge server with multiple
+// options.
+func (o ClientOptions) Connect() (Client, error) {
+	return o.ConnectCtx(context.Background())
 }
 
 // DefaultClientOptions returns the default configuration options for the
@@ -697,24 +703,6 @@ func TLSConfig(config *tls.Config) ClientOption {
 	}
 }
 
-// ReadBufferSize is a ClientOption to set the read buffer size configuration
-// for the client.
-func ReadBufferSize(readBufferSize int) ClientOption {
-	return func(o *ClientOptions) error {
-		o.ReadBufferSize = readBufferSize
-		return nil
-	}
-}
-
-// WriteBufferSize is a ClientOption to set the write buffer size configuration
-// for the client.
-func WriteBufferSize(writeBufferSize int) ClientOption {
-	return func(o *ClientOptions) error {
-		o.WriteBufferSize = writeBufferSize
-		return nil
-	}
-}
-
 // ResubscribeWaitTime is a ClientOption to set the amount of time to attempt
 // to re-establish a stream subscription after being disconnected. For example,
 // if the server serving a subscription dies and the stream is replicated, the
@@ -739,13 +727,32 @@ func AckWaitTime(wait time.Duration) ClientOption {
 	}
 }
 
-// Connect creates a Client connection for the given Liftbridge cluster.
-// Multiple addresses can be provided. Connect will use whichever it connects
+// ReadBufferSize is a ClientOption to set the read buffer size configuration
+// for the client.
+func ReadBufferSize(readBufferSize int) ClientOption {
+	return func(o *ClientOptions) error {
+		o.ReadBufferSize = readBufferSize
+		return nil
+	}
+}
+
+// WriteBufferSize is a ClientOption to set the write buffer size configuration
+// for the client.
+func WriteBufferSize(writeBufferSize int) ClientOption {
+	return func(o *ClientOptions) error {
+		o.WriteBufferSize = writeBufferSize
+		return nil
+	}
+}
+
+// ConnectCtx creates a Client connection for the given Liftbridge cluster.
+// Multiple addresses can be provided. ConnectCtx will use whichever it connects
 // successfully to first in random order. The Client will use the pool of
 // addresses for failover purposes. Note that only one seed address needs to be
 // provided as the Client will discover the other brokers when fetching
-// metadata for the cluster.
-func Connect(addrs []string, options ...ClientOption) (Client, error) {
+// metadata for the cluster. The connection will be blocking if a deadline has
+// been provided via the context.
+func ConnectCtx(ctx context.Context, addrs []string, options ...ClientOption) (Client, error) {
 	opts := DefaultClientOptions()
 	opts.Brokers = addrs
 	for _, opt := range options {
@@ -753,7 +760,17 @@ func Connect(addrs []string, options ...ClientOption) (Client, error) {
 			return nil, err
 		}
 	}
-	return opts.Connect()
+	return opts.ConnectCtx(ctx)
+}
+
+// Connect creates a Client connection for the given Liftbridge cluster.
+// Multiple addresses can be provided. Connect will use whichever it connects
+// successfully to first in random order. The Client will use the pool of
+// addresses for failover purposes. Note that only one seed address needs to be
+// provided as the Client will discover the other brokers when fetching
+// metadata for the cluster.
+func Connect(addrs []string, options ...ClientOption) (Client, error) {
+	return ConnectCtx(context.Background(), addrs, options...)
 }
 
 // Close the client connection.
@@ -799,7 +816,7 @@ func (c *client) CreateStream(ctx context.Context, subject, name string, options
 	}
 
 	req := opts.newRequest(subject, name)
-	err := c.doResilientRPC(func(client proto.APIClient) error {
+	err := c.doResilientRPC(ctx, func(client proto.APIClient) error {
 		_, err := client.CreateStream(ctx, req)
 		return err
 	})
@@ -813,7 +830,7 @@ func (c *client) CreateStream(ctx context.Context, subject, name string, options
 // identifier, globally unique.
 func (c *client) DeleteStream(ctx context.Context, name string) error {
 	req := &proto.DeleteStreamRequest{Name: name}
-	err := c.doResilientRPC(func(client proto.APIClient) error {
+	err := c.doResilientRPC(ctx, func(client proto.APIClient) error {
 		_, err := client.DeleteStream(ctx, req)
 		return err
 	})
@@ -875,7 +892,7 @@ func (c *client) PauseStream(ctx context.Context, name string, options ...PauseO
 		Partitions: opts.Partitions,
 		ResumeAll:  opts.ResumeAll,
 	}
-	err := c.doResilientRPC(func(client proto.APIClient) error {
+	err := c.doResilientRPC(ctx, func(client proto.APIClient) error {
 		_, err := client.PauseStream(ctx, req)
 		return err
 	})
@@ -938,7 +955,7 @@ func (c *client) SetStreamReadonly(ctx context.Context, name string, options ...
 		Partitions: opts.Partitions,
 		Readonly:   !opts.Readwrite,
 	}
-	err := c.doResilientRPC(func(client proto.APIClient) error {
+	err := c.doResilientRPC(ctx, func(client proto.APIClient) error {
 		_, err := client.SetStreamReadonly(ctx, req)
 		return err
 	})
@@ -1287,7 +1304,7 @@ func (c *client) PublishToSubject(ctx context.Context, subject string, value []b
 	}
 
 	var ack *proto.Ack
-	err := c.doResilientRPC(func(client proto.APIClient) error {
+	err := c.doResilientRPC(ctx, func(client proto.APIClient) error {
 		resp, err := client.PublishToSubject(ctx, req)
 		if err == nil {
 			ack = resp.Ack
@@ -1459,7 +1476,7 @@ func (c *client) removeAckContext(cid string) *ackContext {
 	return ctx
 }
 
-func (c *client) dispatchAcks() {
+func (c *client) dispatchAcks(ctx context.Context) {
 	c.mu.RLock()
 	asyncStream := c.asyncStream
 	c.mu.RUnlock()
@@ -1469,7 +1486,7 @@ func (c *client) dispatchAcks() {
 			return
 		}
 		if err != nil {
-			stream, ok := c.newAsyncStream()
+			stream, ok := c.newAsyncStream(ctx)
 			if !ok {
 				return
 			}
@@ -1494,10 +1511,10 @@ func (c *client) dispatchAcks() {
 	}
 }
 
-func (c *client) newAsyncStream() (stream proto.API_PublishAsyncClient, ok bool) {
+func (c *client) newAsyncStream(ctx context.Context) (stream proto.API_PublishAsyncClient, ok bool) {
 	for {
-		err := c.doResilientRPC(func(client proto.APIClient) error {
-			resp, err := client.PublishAsync(context.Background())
+		err := c.doResilientRPC(ctx, func(client proto.APIClient) error {
+			resp, err := client.PublishAsync(ctx)
 			if err != nil {
 				return err
 			}
@@ -1740,7 +1757,7 @@ func (c *client) getPoolAndAddr(stream string, partition int32, readISRReplica b
 
 // doResilientRPC executes the given RPC and performs retries if it fails due
 // to the broker being unavailable, cycling through the known broker list.
-func (c *client) doResilientRPC(rpc func(client proto.APIClient) error) (err error) {
+func (c *client) doResilientRPC(ctx context.Context, rpc func(client proto.APIClient) error) (err error) {
 	c.mu.RLock()
 	conn := c.conn
 	c.mu.RUnlock()
@@ -1748,7 +1765,7 @@ func (c *client) doResilientRPC(rpc func(client proto.APIClient) error) (err err
 	for i := 0; i < 10; i++ {
 		err = rpc(conn)
 		if status.Code(err) == codes.Unavailable {
-			conn, err := c.dialBroker()
+			conn, err := c.dialBroker(ctx)
 			if err != nil {
 				return err
 			}
@@ -1802,20 +1819,25 @@ func (c *client) doResilientLeaderRPC(ctx context.Context, rpc func(client proto
 
 // dialBroker dials each broker in the cluster, in random order, returning a
 // Liftbridge conn for the first one that is successful.
-func (c *client) dialBroker() (*conn, error) {
-	return dialBroker(c.metadata.getAddrs(), c.dialOpts)
+func (c *client) dialBroker(ctx context.Context) (*conn, error) {
+	return dialBroker(ctx, c.metadata.getAddrs(), c.dialOpts)
 }
 
 // dialBroker dials each broker in the list of addresses, in random order,
 // returning a Liftbridge conn for the first one that is successful.
-func dialBroker(addrs []string, opts []grpc.DialOption) (*conn, error) {
+func dialBroker(ctx context.Context, addrs []string, opts []grpc.DialOption) (*conn, error) {
 	var (
 		grpcConn *grpc.ClientConn
 		err      error
 		perm     = rand.Perm(len(addrs))
 	)
+	// Perform a blocking dial if a context with a deadline has been provided.
+	_, hasDeadline := ctx.Deadline()
+	if hasDeadline {
+		opts = append(opts, grpc.WithBlock())
+	}
 	for _, i := range perm {
-		grpcConn, err = grpc.Dial(addrs[i], opts...)
+		grpcConn, err = grpc.DialContext(ctx, addrs[i], opts...)
 		if err == nil {
 			break
 		}

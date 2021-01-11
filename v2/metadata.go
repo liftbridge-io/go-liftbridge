@@ -243,10 +243,10 @@ type metadataCache struct {
 	mu             sync.RWMutex
 	metadata       *Metadata
 	bootstrapAddrs []string
-	doRPC          func(func(proto.APIClient) error) error
+	doRPC          func(context.Context, func(proto.APIClient) error) error
 }
 
-func newMetadataCache(addrs []string, doRPC func(func(proto.APIClient) error) error) *metadataCache {
+func newMetadataCache(addrs []string, doRPC func(context.Context, func(proto.APIClient) error) error) *metadataCache {
 	return &metadataCache{
 		metadata:       &Metadata{},
 		bootstrapAddrs: addrs,
@@ -258,7 +258,7 @@ func newMetadataCache(addrs []string, doRPC func(func(proto.APIClient) error) er
 // information.
 func (m *metadataCache) update(ctx context.Context) (*Metadata, error) {
 	var resp *proto.FetchMetadataResponse
-	if err := m.doRPC(func(client proto.APIClient) (err error) {
+	if err := m.doRPC(ctx, func(client proto.APIClient) (err error) {
 		resp, err = client.FetchMetadata(ctx, &proto.FetchMetadataRequest{})
 		return err
 	}); err != nil {
