@@ -292,12 +292,17 @@ func (m *metadataCache) update(ctx context.Context) (*Metadata, error) {
 				isr = append(isr, brokers[replica])
 			}
 			stream.partitions[partition.Id] = &PartitionInfo{
-				id:       partition.Id,
-				leader:   brokers[partition.Leader],
-				replicas: replicas,
-				isr:      isr,
-				paused:   partition.Paused,
-				readonly: partition.Readonly,
+				id:                         partition.GetId(),
+				leader:                     brokers[partition.Leader],
+				replicas:                   replicas,
+				isr:                        isr,
+				paused:                     partition.Paused,
+				readonly:                   partition.Readonly,
+				highWatermark:              partition.HighWatermark,
+				newestOffset:               partition.NewestOffset,
+				messagesReceivedTimestamps: protoToEventTimestamps(partition.GetMessagesReceivedTimestamps()),
+				pauseTimestamps:            protoToEventTimestamps(partition.GetPauseTimestamps()),
+				readonlyTimestamps:         protoToEventTimestamps(partition.ReadonlyTimestamps),
 			}
 		}
 		streams[stream.name] = stream
