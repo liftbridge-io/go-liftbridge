@@ -13,7 +13,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"io"
 	"math/rand"
 	"sync"
 	"time"
@@ -518,12 +517,9 @@ type Client interface {
 // closing them when they go unused for a prolonged period of time.
 type client struct {
 	mu          sync.RWMutex
-	conn        *conn
-	asyncConn   *conn
-	asyncStream proto.API_PublishAsyncClient
+	brokers     *brokers
 	ackContexts map[string]*ackContext
 	metadata    *metadataCache
-	pools       map[string]*connPool
 	opts        ClientOptions
 	dialOpts    []grpc.DialOption
 	closed      chan struct{}
@@ -537,11 +533,13 @@ type ClientOptions struct {
 
 	// MaxConnsPerBroker is the maximum number of connections to pool for a
 	// given broker in the cluster. The default is 2.
+	// TODO: not used anymore?
 	MaxConnsPerBroker int
 
 	// KeepAliveTime is the amount of time a pooled connection can be idle
 	// before it is closed and removed from the pool. The default is 30
 	// seconds.
+	// TODO: not used anymore?
 	KeepAliveTime time.Duration
 
 	// TLSCert is the TLS certificate file to use. The client does not use a
@@ -608,39 +606,24 @@ func (o ClientOptions) ConnectCtx(ctx context.Context) (Client, error) {
 		opts = append(opts, grpc.WithReadBufferSize(o.ReadBufferSize))
 	}
 
-	conn, err := dialBroker(ctx, o.Brokers, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	asyncConn, err := dialBroker(ctx, o.Brokers, opts)
-	if err != nil {
-		conn.Close()
-		return nil, err
-	}
-
-	asyncStream, err := asyncConn.PublishAsync(ctx)
-	if err != nil {
-		conn.Close()
-		asyncConn.Close()
-		return nil, err
-	}
-
 	c := &client{
-		conn:        conn,
-		asyncConn:   asyncConn,
-		asyncStream: asyncStream,
-		pools:       make(map[string]*connPool),
 		opts:        o,
 		dialOpts:    opts,
 		ackContexts: make(map[string]*ackContext),
 		closed:      make(chan struct{}),
 	}
-	c.metadata = newMetadataCache(o.Brokers, c.doResilientRPC)
-	if _, err := c.metadata.update(ctx); err != nil {
+
+	brokers, err := newBrokers(ctx, o.Brokers, opts, c.ackReceived)
+	if err != nil {
 		return nil, err
 	}
-	go c.dispatchAcks(ctx)
+	c.brokers = brokers
+
+	c.metadata = newMetadataCache(o.Brokers, c.doResilientRPC)
+	if _, err := c.updateMetadata(ctx); err != nil {
+		return nil, err
+	}
+
 	return c, nil
 }
 
@@ -782,12 +765,7 @@ func (c *client) Close() error {
 		return nil
 	default:
 	}
-	for _, pool := range c.pools {
-		if err := pool.close(); err != nil {
-			return err
-		}
-	}
-	if err := c.conn.Close(); err != nil {
+	if err := c.brokers.Close(); err != nil {
 		return err
 	}
 	close(c.closed)
@@ -1132,12 +1110,12 @@ func (c *client) Subscribe(ctx context.Context, streamName string, handler Handl
 		}
 	}
 
-	stream, releaseConn, err := c.subscribe(ctx, streamName, opts)
+	stream, err := c.subscribe(ctx, streamName, opts)
 	if err != nil {
 		return err
 	}
 
-	go c.dispatchStream(ctx, streamName, stream, releaseConn, handler)
+	go c.dispatchStream(ctx, streamName, stream, handler)
 	return nil
 }
 
@@ -1214,20 +1192,23 @@ func (c *client) PublishAsync(ctx context.Context, stream string, value []byte,
 	return c.publishAsync(ctx, stream, value, ackHandler, opts)
 }
 
-func (c *client) publishAsync(ctx context.Context, stream string, value []byte,
+func (c *client) publishAsync(ctx context.Context, streamName string, value []byte,
 	ackHandler AckHandler, opts *MessageOptions) error {
 
 	if opts.CorrelationID == "" {
 		opts.CorrelationID = nuid.Next()
 	}
 
-	req, err := c.newPublishRequest(ctx, stream, value, opts)
+	req, err := c.newPublishRequest(ctx, streamName, value, opts)
 	if err != nil {
 		return err
 	}
 
 	c.mu.Lock()
-	asyncStream := c.asyncStream
+	stream, err := c.brokers.PublicationStream(streamName, req.Partition)
+	if err != nil {
+		return fmt.Errorf("broker for stream: %w", err)
+	}
 	if ackHandler != nil {
 		// Setup ack timeout.
 		var (
@@ -1254,7 +1235,7 @@ func (c *client) publishAsync(ctx context.Context, stream string, value []byte,
 	}
 	c.mu.Unlock()
 
-	if err := asyncStream.Send(req); err != nil {
+	if err := stream.Send(req); err != nil {
 		c.removeAckContext(req.CorrelationId)
 		if status.Code(err) == codes.FailedPrecondition {
 			err = ErrReadonlyPartition
@@ -1476,60 +1457,20 @@ func (c *client) removeAckContext(cid string) *ackContext {
 	return ctx
 }
 
-func (c *client) dispatchAcks(ctx context.Context) {
-	c.mu.RLock()
-	asyncStream := c.asyncStream
-	c.mu.RUnlock()
-	for {
-		resp, err := asyncStream.Recv()
-		if err == io.EOF {
-			return
-		}
-		if err != nil {
-			stream, ok := c.newAsyncStream(ctx)
-			if !ok {
-				return
-			}
-			asyncStream = stream
-			c.mu.Lock()
-			c.asyncStream = stream
-			c.mu.Unlock()
-			continue
-		}
-
-		var correlationID string
-		if resp.AsyncError != nil {
-			correlationID = resp.CorrelationId
-		} else if resp.Ack != nil {
-			// TODO: Use resp.CorrelationId once Ack.CorrelationId is removed.
-			correlationID = resp.Ack.CorrelationId
-		}
-		ctx := c.removeAckContext(correlationID)
-		if ctx != nil && ctx.handler != nil {
-			ctx.handler(ackFromProto(resp.Ack), asyncErrorFromProto(resp.AsyncError))
-		}
+func (c *client) ackReceived(resp *proto.PublishResponse) {
+	var correlationID string
+	if resp.AsyncError != nil {
+		correlationID = resp.CorrelationId
+	} else if resp.Ack != nil {
+		// TODO: Use resp.CorrelationId once Ack.CorrelationId is removed.
+		correlationID = resp.Ack.CorrelationId
+	}
+	ctx := c.removeAckContext(correlationID)
+	if ctx != nil && ctx.handler != nil {
+		ctx.handler(ackFromProto(resp.Ack), asyncErrorFromProto(resp.AsyncError))
 	}
 }
 
-func (c *client) newAsyncStream(ctx context.Context) (stream proto.API_PublishAsyncClient, ok bool) {
-	for {
-		err := c.doResilientRPC(ctx, func(client proto.APIClient) error {
-			resp, err := client.PublishAsync(ctx)
-			if err != nil {
-				return err
-			}
-			stream = resp
-			return nil
-		})
-		if err == nil {
-			return stream, true
-		}
-		if c.isClosed() {
-			return nil, false
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-}
 func (c *client) newPublishRequest(ctx context.Context, stream string, value []byte,
 	opts *MessageOptions) (*proto.PublishRequest, error) {
 
@@ -1580,31 +1521,23 @@ func (c *client) waitForStreamMetadata(ctx context.Context, stream string) (*Met
 			return metadata, nil
 		}
 		time.Sleep(50 * time.Millisecond)
-		c.metadata.update(ctx)
+		c.updateMetadata(ctx)
 	}
 	return nil, fmt.Errorf("no metadata for stream %s", stream)
 }
 
 func (c *client) subscribe(ctx context.Context, stream string,
-	opts *SubscriptionOptions) (proto.API_SubscribeClient, func(), error) {
+	opts *SubscriptionOptions) (proto.API_SubscribeClient, error) {
 	var (
-		pool *connPool
-		addr string
-		conn *conn
-		st   proto.API_SubscribeClient
-		err  error
+		client proto.APIClient
+		st     proto.API_SubscribeClient
+		err    error
 	)
 	for i := 0; i < 5; i++ {
-		pool, addr, err = c.getPoolAndAddr(stream, opts.Partition, opts.ReadISRReplica)
+		client, err = c.getAPIClient(stream, opts.Partition, opts.ReadISRReplica)
 		if err != nil {
 			time.Sleep(50 * time.Millisecond)
-			c.metadata.update(ctx)
-			continue
-		}
-		conn, err = pool.get(c.connFactory(addr))
-		if err != nil {
-			time.Sleep(50 * time.Millisecond)
-			c.metadata.update(ctx)
+			c.updateMetadata(ctx)
 			continue
 		}
 		req := &proto.SubscribeRequest{
@@ -1619,14 +1552,14 @@ func (c *client) subscribe(ctx context.Context, stream string,
 			ReadISRReplica: opts.ReadISRReplica,
 			Resume:         opts.Resume,
 		}
-		st, err = conn.Subscribe(ctx, req)
+		st, err = client.Subscribe(ctx, req)
 		if err != nil {
 			if status.Code(err) == codes.Unavailable {
 				time.Sleep(50 * time.Millisecond)
-				c.metadata.update(ctx)
+				c.updateMetadata(ctx)
 				continue
 			}
-			return nil, nil, err
+			return nil, err
 		}
 
 		// The server will either send an empty message, indicating the
@@ -1636,7 +1569,7 @@ func (c *client) subscribe(ctx context.Context, stream string,
 			// This indicates the server was not the stream leader. Refresh
 			// metadata and retry after waiting a bit.
 			time.Sleep(time.Duration(10+i*50) * time.Millisecond)
-			c.metadata.update(ctx)
+			c.updateMetadata(ctx)
 			continue
 		}
 		if err != nil {
@@ -1647,17 +1580,15 @@ func (c *client) subscribe(ctx context.Context, stream string,
 				err = ErrReadonlyPartition
 			}
 
-			return nil, nil, err
+			return nil, err
 		}
-		return st, func() { pool.put(conn) }, nil
+		return st, nil
 	}
-	return nil, nil, err
+	return nil, err
 }
 
 func (c *client) dispatchStream(ctx context.Context, streamName string,
-	stream proto.API_SubscribeClient, releaseConn func(), handler Handler) {
-
-	defer releaseConn()
+	stream proto.API_SubscribeClient, handler Handler) {
 	var (
 		lastOffset  int64
 		lastError   error
@@ -1726,53 +1657,55 @@ LOOP:
 	}
 }
 
-// connFactory returns a pool connFactory for the given address. The
-// connFactory dials the address to create a Liftbridge conn.
-func (c *client) connFactory(addr string) connFactory {
-	return func() (*conn, error) {
-		grpcConn, err := grpc.Dial(addr, c.dialOpts...)
-		if err != nil {
-			return nil, err
-		}
-		return newConn(grpcConn), nil
-	}
-}
-
-// getPoolAndAddr returns the connPool and broker address for the given
-// partition.
-func (c *client) getPoolAndAddr(stream string, partition int32, readISRReplica bool) (*connPool, string, error) {
+// getAPIClient returns the API client for the given partition.
+func (c *client) getAPIClient(stream string, partition int32, readISRReplica bool) (proto.APIClient, error) {
 	addr, err := c.metadata.getAddr(stream, partition, readISRReplica)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	pool, ok := c.pools[addr]
-	if !ok {
-		pool = newConnPool(c.opts.MaxConnsPerBroker, c.opts.KeepAliveTime)
-		c.pools[addr] = pool
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	client, err := c.brokers.FromAddr(addr)
+	if err != nil {
+		return nil, err
 	}
-	return pool, addr, nil
+	return client, nil
+}
+
+func (c *client) updateMetadata(ctx context.Context) (*Metadata, error) {
+	var (
+		metadata *Metadata
+		err      error
+	)
+	if metadata, err = c.metadata.update(ctx); err != nil {
+		return nil, err
+	}
+	if err = c.brokers.Update(ctx, c.metadata.getAddrs()); err != nil {
+		return nil, err
+	}
+	return metadata, nil
 }
 
 // doResilientRPC executes the given RPC and performs retries if it fails due
 // to the broker being unavailable, cycling through the known broker list.
 func (c *client) doResilientRPC(ctx context.Context, rpc func(client proto.APIClient) error) (err error) {
 	c.mu.RLock()
-	conn := c.conn
+	client, err := c.brokers.Random()
 	c.mu.RUnlock()
+	if err != nil {
+		return err
+	}
 
 	for i := 0; i < 10; i++ {
-		err = rpc(conn)
+		err = rpc(client)
 		if status.Code(err) == codes.Unavailable {
-			conn, err := c.dialBroker(ctx)
+			time.Sleep(50 * time.Millisecond)
+			c.mu.RLock()
+			client, err = c.brokers.Random()
+			c.mu.RUnlock()
 			if err != nil {
 				return err
 			}
-			c.mu.Lock()
-			c.conn.Close()
-			c.conn = conn
-			c.mu.Unlock()
 		} else {
 			break
 		}
@@ -1786,66 +1719,26 @@ func (c *client) doResilientLeaderRPC(ctx context.Context, rpc func(client proto
 	stream string, partition int32) (err error) {
 
 	var (
-		pool *connPool
-		addr string
-		conn *conn
+		client proto.APIClient
 	)
 	for i := 0; i < 5; i++ {
-		pool, addr, err = c.getPoolAndAddr(stream, partition, false)
+		client, err = c.getAPIClient(stream, partition, false)
 		if err != nil {
 			time.Sleep(50 * time.Millisecond)
-			c.metadata.update(ctx)
+			c.updateMetadata(ctx)
 			continue
 		}
-		conn, err = pool.get(c.connFactory(addr))
-		if err != nil {
-			time.Sleep(50 * time.Millisecond)
-			c.metadata.update(ctx)
-			continue
-		}
-		err = rpc(conn)
-		pool.put(conn)
+		err = rpc(client)
 		if err != nil {
 			if status.Code(err) == codes.Unavailable || status.Code(err) == codes.FailedPrecondition {
 				time.Sleep(50 * time.Millisecond)
-				c.metadata.update(ctx)
+				c.updateMetadata(ctx)
 				continue
 			}
 		}
 		break
 	}
 	return err
-}
-
-// dialBroker dials each broker in the cluster, in random order, returning a
-// Liftbridge conn for the first one that is successful.
-func (c *client) dialBroker(ctx context.Context) (*conn, error) {
-	return dialBroker(ctx, c.metadata.getAddrs(), c.dialOpts)
-}
-
-// dialBroker dials each broker in the list of addresses, in random order,
-// returning a Liftbridge conn for the first one that is successful.
-func dialBroker(ctx context.Context, addrs []string, opts []grpc.DialOption) (*conn, error) {
-	var (
-		grpcConn *grpc.ClientConn
-		err      error
-		perm     = rand.Perm(len(addrs))
-	)
-	// Perform a blocking dial if a context with a deadline has been provided.
-	_, hasDeadline := ctx.Deadline()
-	if hasDeadline {
-		opts = append(opts, grpc.WithBlock())
-	}
-	for _, i := range perm {
-		grpcConn, err = grpc.DialContext(ctx, addrs[i], opts...)
-		if err == nil {
-			break
-		}
-	}
-	if grpcConn == nil {
-		return nil, err
-	}
-	return newConn(grpcConn), nil
 }
 
 // protoToEventTimestamps returns an event's timestamps for a given proto
