@@ -1520,7 +1520,7 @@ func (c *client) waitForStreamMetadata(ctx context.Context, stream string) (*Met
 		if metadata.hasStreamMetadata(stream) {
 			return metadata, nil
 		}
-		time.Sleep(50 * time.Millisecond)
+		sleepContext(ctx, 50*time.Millisecond)
 		c.updateMetadata(ctx)
 	}
 	return nil, fmt.Errorf("no metadata for stream %s", stream)
@@ -1536,7 +1536,7 @@ func (c *client) subscribe(ctx context.Context, stream string,
 	for i := 0; i < 5; i++ {
 		client, err = c.getAPIClient(stream, opts.Partition, opts.ReadISRReplica)
 		if err != nil {
-			time.Sleep(50 * time.Millisecond)
+			sleepContext(ctx, 50*time.Millisecond)
 			c.updateMetadata(ctx)
 			continue
 		}
@@ -1555,7 +1555,7 @@ func (c *client) subscribe(ctx context.Context, stream string,
 		st, err = client.Subscribe(ctx, req)
 		if err != nil {
 			if status.Code(err) == codes.Unavailable {
-				time.Sleep(50 * time.Millisecond)
+				sleepContext(ctx, 50*time.Millisecond)
 				c.updateMetadata(ctx)
 				continue
 			}
@@ -1568,7 +1568,7 @@ func (c *client) subscribe(ctx context.Context, stream string,
 		if status.Code(err) == codes.FailedPrecondition {
 			// This indicates the server was not the stream leader. Refresh
 			// metadata and retry after waiting a bit.
-			time.Sleep(time.Duration(10+i*50) * time.Millisecond)
+			sleepContext(ctx, time.Duration(10+i*50)*time.Millisecond)
 			c.updateMetadata(ctx)
 			continue
 		}
@@ -1648,7 +1648,7 @@ LOOP:
 			if err == nil {
 				return
 			}
-			time.Sleep(time.Second + (time.Duration(rand.Intn(500)) * time.Millisecond))
+			sleepContext(ctx, time.Second+(time.Duration(rand.Intn(500))*time.Millisecond))
 			c.mu.RLock()
 			closed = c.isClosed()
 			c.mu.RUnlock()
@@ -1698,7 +1698,7 @@ func (c *client) doResilientRPC(ctx context.Context, rpc func(client proto.APICl
 			return
 		}
 		if err = rpc(client); status.Code(err) == codes.Unavailable {
-			time.Sleep(50 * time.Millisecond)
+			sleepContext(ctx, 50*time.Millisecond)
 			continue
 		}
 		break
@@ -1717,14 +1717,14 @@ func (c *client) doResilientLeaderRPC(ctx context.Context, rpc func(client proto
 	for i := 0; i < 5; i++ {
 		client, err = c.getAPIClient(stream, partition, false)
 		if err != nil {
-			time.Sleep(50 * time.Millisecond)
+			sleepContext(ctx, 50*time.Millisecond)
 			c.updateMetadata(ctx)
 			continue
 		}
 		err = rpc(client)
 		if err != nil {
 			if status.Code(err) == codes.Unavailable || status.Code(err) == codes.FailedPrecondition {
-				time.Sleep(50 * time.Millisecond)
+				sleepContext(ctx, 50*time.Millisecond)
 				c.updateMetadata(ctx)
 				continue
 			}
@@ -1750,4 +1750,12 @@ func protoToEventTimestamps(timestamps *proto.PartitionEventTimestamps) Partitio
 	}
 
 	return res
+}
+
+// sleepContext performs a sleep that can be interrupted by a context.
+func sleepContext(ctx context.Context, duration time.Duration) {
+	select {
+	case <-ctx.Done():
+	case <-time.After(duration):
+	}
 }
