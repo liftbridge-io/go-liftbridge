@@ -1689,26 +1689,19 @@ func (c *client) updateMetadata(ctx context.Context) (*Metadata, error) {
 // doResilientRPC executes the given RPC and performs retries if it fails due
 // to the broker being unavailable, cycling through the known broker list.
 func (c *client) doResilientRPC(ctx context.Context, rpc func(client proto.APIClient) error) (err error) {
-	c.mu.RLock()
-	client, err := c.brokers.Random()
-	c.mu.RUnlock()
-	if err != nil {
-		return err
-	}
-
+	var client proto.APIClient
 	for i := 0; i < 10; i++ {
-		err = rpc(client)
-		if status.Code(err) == codes.Unavailable {
-			time.Sleep(50 * time.Millisecond)
-			c.mu.RLock()
-			client, err = c.brokers.Random()
-			c.mu.RUnlock()
-			if err != nil {
-				return err
-			}
-		} else {
-			break
+		c.mu.RLock()
+		client, err = c.brokers.Random()
+		c.mu.RUnlock()
+		if err != nil {
+			return
 		}
+		if err = rpc(client); status.Code(err) == codes.Unavailable {
+			time.Sleep(50 * time.Millisecond)
+			continue
+		}
+		break
 	}
 	return
 }
