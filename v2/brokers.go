@@ -15,7 +15,7 @@ import (
 
 type ackReceivedFunc func(*proto.PublishResponse)
 
-// brokers represent a collection of connections to brokers.
+// brokers represents a collection of connections to brokers.
 type brokers struct {
 	mu          sync.RWMutex
 	brokers     []*broker
