@@ -1204,12 +1204,12 @@ func (c *client) publishAsync(ctx context.Context, streamName string, value []by
 		return err
 	}
 
-	c.mu.Lock()
 	stream, err := c.brokers.PublicationStream(streamName, req.Partition)
 	if err != nil {
 		return fmt.Errorf("broker for stream: %w", err)
 	}
 	if ackHandler != nil {
+		c.mu.Lock()
 		// Setup ack timeout.
 		var (
 			timeout      = c.opts.AckWaitTime
@@ -1232,8 +1232,8 @@ func (c *client) publishAsync(ctx context.Context, streamName string, value []by
 			}),
 		}
 		c.ackContexts[req.CorrelationId] = ack
+		c.mu.Unlock()
 	}
-	c.mu.Unlock()
 
 	if err := stream.Send(req); err != nil {
 		c.removeAckContext(req.CorrelationId)
@@ -1663,8 +1663,6 @@ func (c *client) getAPIClient(stream string, partition int32, readISRReplica boo
 	if err != nil {
 		return nil, err
 	}
-	c.mu.RLock()
-	defer c.mu.RUnlock()
 	client, err := c.brokers.FromAddr(addr)
 	if err != nil {
 		return nil, err
@@ -1691,9 +1689,7 @@ func (c *client) updateMetadata(ctx context.Context) (*Metadata, error) {
 func (c *client) doResilientRPC(ctx context.Context, rpc func(client proto.APIClient) error) (err error) {
 	var client proto.APIClient
 	for i := 0; i < 10; i++ {
-		c.mu.RLock()
 		client, err = c.brokers.Random()
-		c.mu.RUnlock()
 		if err != nil {
 			return
 		}
