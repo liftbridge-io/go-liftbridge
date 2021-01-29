@@ -60,16 +60,13 @@ func newBrokers(ctx context.Context, addrs []string, opts []grpc.DialOption, ack
 }
 
 // Close closes all connections to the brokers.
-func (b *brokers) Close() error {
+func (b *brokers) Close() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	for _, c := range b.brokers {
-		if err := c.Close(); err != nil {
-			return err
-		}
+		c.Close()
 	}
-	return nil
 }
 
 // Update updates the connections to the brokers by closing any connection to a
@@ -196,12 +193,9 @@ func newBroker(ctx context.Context, addr string, opts []grpc.DialOption, ackRece
 	return b, nil
 }
 
-func (b *broker) Close() error {
-	if err := b.conn.Close(); err != nil {
-		return err
-	}
+func (b *broker) Close() {
+	b.conn.Close()
 	b.wg.Wait()
-	return nil
 }
 
 func (b *broker) dispatchAcks(ackReceived ackReceivedFunc) {

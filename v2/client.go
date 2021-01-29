@@ -765,9 +765,7 @@ func (c *client) Close() error {
 		return nil
 	default:
 	}
-	if err := c.brokers.Close(); err != nil {
-		return err
-	}
+	c.brokers.Close()
 	close(c.closed)
 	return nil
 }
