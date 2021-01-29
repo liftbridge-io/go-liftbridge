@@ -531,15 +531,12 @@ type ClientOptions struct {
 	// connect.
 	Brokers []string
 
-	// MaxConnsPerBroker is the maximum number of connections to pool for a
-	// given broker in the cluster. The default is 2.
-	// TODO: not used anymore?
+	// Deprecated: MaxConnsPerBroker is no longer used since the client now
+	// maintains one connection per broker.
 	MaxConnsPerBroker int
 
-	// KeepAliveTime is the amount of time a pooled connection can be idle
-	// before it is closed and removed from the pool. The default is 30
-	// seconds.
-	// TODO: not used anymore?
+	// Deprecated: KeepAliveTime is no longer used since the client now
+	// maintains one connection per broker.
 	KeepAliveTime time.Duration
 
 	// TLSCert is the TLS certificate file to use. The client does not use a
@@ -652,6 +649,8 @@ type ClientOption func(*ClientOptions) error
 
 // MaxConnsPerBroker is a ClientOption to set the maximum number of connections
 // to pool for a given broker in the cluster. The default is 2.
+//
+// Deprecated: the client now maintains one connection per broker.
 func MaxConnsPerBroker(max int) ClientOption {
 	return func(o *ClientOptions) error {
 		o.MaxConnsPerBroker = max
@@ -662,6 +661,8 @@ func MaxConnsPerBroker(max int) ClientOption {
 // KeepAliveTime is a ClientOption to set the amount of time a pooled
 // connection can be idle before it is closed and removed from the pool. The
 // default is 30 seconds.
+//
+// Deprecated: the client now maintains one connection per broker.
 func KeepAliveTime(keepAlive time.Duration) ClientOption {
 	return func(o *ClientOptions) error {
 		o.KeepAliveTime = keepAlive
