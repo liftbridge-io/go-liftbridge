@@ -1134,7 +1134,7 @@ func TestPublishToPartition(t *testing.T) {
 	require.Equal(t, []byte("hello"), req.Value)
 	require.Equal(t, "foo", req.Stream)
 	require.Equal(t, int32(1), req.Partition)
-	require.Equal(t, map[string][]byte(nil), req.Headers)
+	require.Equal(t, map[string][]byte{"foo": []byte("bar")}, req.Headers)
 	require.Equal(t, "", req.AckInbox)
 	require.NotEqual(t, "", req.CorrelationId)
 	require.Equal(t, proto.AckPolicy_ALL, req.AckPolicy)

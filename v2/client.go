@@ -1484,6 +1484,7 @@ func (c *client) newPublishRequest(ctx context.Context, stream string, value []b
 		Partition:      partition,
 		Key:            opts.Key,
 		Value:          value,
+		Headers:        opts.Headers,
 		AckInbox:       opts.AckInbox,
 		CorrelationId:  opts.CorrelationID,
 		AckPolicy:      opts.AckPolicy.toProto(),
