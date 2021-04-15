@@ -182,6 +182,9 @@ type StreamOptions struct {
 	// OptimisticConcurrencyControl controls the activation of optimistic concurrency control
 	// of the stream
 	OptimisticConcurrencyControl *bool
+
+	// Encryption controls the activation of encryption data-at-rest on server side
+	Encryption *bool
 }
 
 func (s *StreamOptions) newRequest(subject, name string) *proto.CreateStreamRequest {
@@ -227,6 +230,9 @@ func (s *StreamOptions) newRequest(subject, name string) *proto.CreateStreamRequ
 	}
 	if s.OptimisticConcurrencyControl != nil {
 		req.OptimisticConcurrencyControl = &proto.NullableBool{Value: *s.OptimisticConcurrencyControl}
+	}
+	if s.Encryption != nil {
+		req.Encryption = &proto.NullableBool{Value: *s.Encryption}
 	}
 	return req
 }
@@ -416,6 +422,15 @@ func MinISR(minISR int) StreamOption {
 func OptimisticConcurrencyControl(val bool) StreamOption {
 	return func(o *StreamOptions) error {
 		o.OptimisticConcurrencyControl = &val
+		return nil
+	}
+}
+
+// Encryption sets the value of Encryption, which enables
+// encryption of data at rest on the server side for the given partition
+func Encryption(val bool) StreamOption {
+	return func(o *StreamOptions) error {
+		o.Encryption = &val
 		return nil
 	}
 }
