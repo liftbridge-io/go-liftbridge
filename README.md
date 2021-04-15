@@ -1,4 +1,4 @@
-# go-liftbridge [![CircleCI](https://circleci.com/gh/liftbridge-io/go-liftbridge.svg?style=svg)](https://circleci.com/gh/liftbridge-io/go-liftbridge) [![GoDoc](https://godoc.org/github.com/liftbridge-io/go-liftbridge?status.svg)](https://godoc.org/github.com/liftbridge-io/go-liftbridge)
+# go-liftbridge [![CircleCI](https://circleci.com/gh/liftbridge-io/go-liftbridge.svg?style=svg)](https://circleci.com/gh/liftbridge-io/go-liftbridge) [![GoDoc](https://godoc.org/github.com/liftbridge-io/go-liftbridge/v2?status.svg)](https://godoc.org/github.com/liftbridge-io/go-liftbridge/v2)
 
 Go client for [Liftbridge](https://github.com/liftbridge-io/liftbridge), a
 system that provides lightweight, fault-tolerant message streams for
