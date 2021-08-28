@@ -1714,7 +1714,7 @@ func (c *client) updateMetadata(ctx context.Context) (*Metadata, error) {
 func (c *client) doResilientRPC(ctx context.Context, rpc func(client proto.APIClient) error) (err error) {
 	var client proto.APIClient
 	for i := 0; i < 10; i++ {
-		client, err = c.brokers.Random()
+		client, err = c.brokers.ChooseBroker()
 		if err != nil {
 			return
 		}

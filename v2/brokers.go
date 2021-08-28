@@ -7,6 +7,7 @@ import (
 	"io"
 	"math/rand"
 	"sync"
+	"time"
 
 	proto "github.com/liftbridge-io/liftbridge-api/go"
 	"github.com/serialx/hashring"
@@ -14,6 +15,13 @@ import (
 )
 
 type ackReceivedFunc func(*proto.PublishResponse)
+
+type BrokerStatus struct {
+	ConnectionCount  int
+	LastKnownLatency float64
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
 
 // brokers represents a collection of connections to brokers.
 type brokers struct {
@@ -121,18 +129,15 @@ func (b *brokers) FromAddr(addr string) (proto.APIClient, error) {
 	return broker.client, nil
 }
 
-// Random returns an API client to a random broker.
-func (b *brokers) Random() (proto.APIClient, error) {
+func (b *brokers) ChooseBroker() (proto.APIClient, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
 	if len(b.brokers) == 0 {
-		return nil, errors.New("no brokers")
+		return nil, errors.New("no borkers")
 	}
 
-	// TODO: use a load balancer instead.
 	broker := b.brokers[rand.Intn(len(b.brokers))]
-
 	return broker.client, nil
 }
 
