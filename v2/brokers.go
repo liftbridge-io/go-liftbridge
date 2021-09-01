@@ -16,11 +16,10 @@ import (
 
 type ackReceivedFunc func(*proto.PublishResponse)
 
-type BrokerStatus struct {
-	ConnectionCount  int
+type brokerStatus struct {
+	ConnectionCount int
+	// In Milisecond
 	LastKnownLatency float64
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
 }
 
 // brokers represents a collection of connections to brokers.
@@ -171,6 +170,7 @@ type broker struct {
 	client proto.APIClient
 	stream proto.API_PublishAsyncClient
 	wg     sync.WaitGroup
+	status *brokerStatus
 }
 
 func newBroker(ctx context.Context, addr string, opts []grpc.DialOption, ackReceived ackReceivedFunc) (*broker, error) {
@@ -182,6 +182,7 @@ func newBroker(ctx context.Context, addr string, opts []grpc.DialOption, ackRece
 	b := &broker{
 		conn:   conn,
 		client: proto.NewAPIClient(conn),
+		status: &brokerStatus{ConnectionCount: 0, LastKnownLatency: 0},
 	}
 
 	if b.stream, err = b.client.PublishAsync(ctx); err != nil {
@@ -195,7 +196,30 @@ func newBroker(ctx context.Context, addr string, opts []grpc.DialOption, ackRece
 		b.dispatchAcks(ackReceived)
 	}()
 
+	if err := b.updateStatus(ctx); err != nil {
+		return nil, err
+	}
+
 	return b, nil
+}
+
+func (b *broker) updateStatus(ctx context.Context) error {
+	// Measure instant server response time
+	start := time.Now()
+
+	_, err := b.client.FetchMetadata(ctx, &proto.FetchMetadataRequest{})
+
+	elapsed := time.Now().Sub(start)
+
+	if err != nil {
+		return err
+	}
+
+	// TODO: parse connection count from metadata
+	b.status.LastKnownLatency = float64(elapsed.Milliseconds())
+
+	return nil
+
 }
 
 func (b *broker) Close() {
