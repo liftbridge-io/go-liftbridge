@@ -136,6 +136,9 @@ type mockAPI struct {
 	fetchPartitionMetadataErr      error
 	// autclearError indicates where the mock API shall clear mock error automatically
 	autoClearError bool
+	// delayMetaDataResponse indicates the FetchMetadata call shall be delayed for few seconds
+	// This behavior simulates a server with high work load/ high latency
+	delayMetaDataResponse bool
 }
 
 func newMockAPI() *mockAPI {
@@ -160,6 +163,13 @@ func newMockAPI() *mockAPI {
 func (m *mockAPI) SetAutoClearError() {
 	m.mu.Lock()
 	m.autoClearError = true
+	m.mu.Unlock()
+}
+
+// SetDelayMetadataResponse activate delay metadata response mode
+func (m *mockAPI) SetDelayMetadataResponse() {
+	m.mu.Lock()
+	m.delayMetaDataResponse = true
 	m.mu.Unlock()
 }
 
@@ -445,6 +455,10 @@ func (m *mockAPI) FetchMetadata(ctx context.Context, in *proto.FetchMetadataRequ
 		err := m.fetchMetadataErr
 		if m.autoClearError {
 			m.fetchMetadataErr = nil
+		}
+		if m.delayMetaDataResponse {
+			// Delay the response to simulate a server with high work load
+			time.Sleep(5 * time.Second)
 		}
 		return nil, err
 	}

@@ -257,7 +257,7 @@ func (b *broker) updateStatus(ctx context.Context) error {
 	}
 
 	// TODO: parse connection count from metadata
-	b.status.LastKnownLatency = float64(elapsed.Milliseconds())
+	b.status.LastKnownLatency = float64(elapsed)
 
 	return nil
 
