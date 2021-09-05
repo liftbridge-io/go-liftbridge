@@ -540,6 +540,12 @@ type client struct {
 	closed      chan struct{}
 }
 
+// Configuration to let the client knows which server it should connect to
+const (
+	ConnectToLowLatencyServer  = 0
+	ConnectToLowWorkLoadServer = 1
+)
+
 // ClientOptions are used to control the Client configuration.
 type ClientOptions struct {
 	// Brokers it the set of hosts the client will use when attempting to
@@ -585,6 +591,9 @@ type ClientOptions struct {
 	// -1 will use the GRPC defaults. See
 	// https://godoc.org/google.golang.org/grpc#WithWriteBufferSize.
 	WriteBufferSize int
+
+	// Select the server to connecto to based on specific criteria
+	ServerSelection int
 }
 
 // ConnectCtx will attempt to connect to a Liftbridge server with multiple
@@ -740,6 +749,24 @@ func ReadBufferSize(readBufferSize int) ClientOption {
 func WriteBufferSize(writeBufferSize int) ClientOption {
 	return func(o *ClientOptions) error {
 		o.WriteBufferSize = writeBufferSize
+		return nil
+	}
+}
+
+// SetConnectionToLowLatencyServer is a ClientOption to set the client to connect
+// to server with lowest latency.
+func SetConnectionToLowLatencyServer() ClientOption {
+	return func(o *ClientOptions) error {
+		o.ServerSelection = ConnectToLowLatencyServer
+		return nil
+	}
+}
+
+// SetConnectToLowWorkLoadServer is a ClientOption to set the client to connect
+// to server with lowest work loqd.
+func SetConnectToLowWorkLoadServer() ClientOption {
+	return func(o *ClientOptions) error {
+		o.ServerSelection = ConnectToLowWorkLoadServer
 		return nil
 	}
 }
@@ -1713,8 +1740,9 @@ func (c *client) updateMetadata(ctx context.Context) (*Metadata, error) {
 // to the broker being unavailable, cycling through the known broker list.
 func (c *client) doResilientRPC(ctx context.Context, rpc func(client proto.APIClient) error) (err error) {
 	var client proto.APIClient
+
 	for i := 0; i < 10; i++ {
-		client, err = c.brokers.ChooseBroker()
+		client, err = c.brokers.ChooseBroker(c.opts.ServerSelection)
 		if err != nil {
 			return
 		}

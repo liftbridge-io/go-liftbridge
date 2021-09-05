@@ -128,16 +128,57 @@ func (b *brokers) FromAddr(addr string) (proto.APIClient, error) {
 	return broker.client, nil
 }
 
-func (b *brokers) ChooseBroker() (proto.APIClient, error) {
+func (b *brokers) ChooseBroker(selectionCriteria int) (proto.APIClient, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
 	if len(b.brokers) == 0 {
 		return nil, errors.New("no borkers")
 	}
-
+	// Initiate a random broker
 	broker := b.brokers[rand.Intn(len(b.brokers))]
-	return broker.client, nil
+
+	// Choose brokers based on criteria
+	switch selectionCriteria {
+	case ConnectToLowLatencyServer:
+		minLatency := -1
+
+		// Find server with lowest latency
+		for i := 0; i < len(b.brokers); i++ {
+			if i == 0 {
+				minLatency = int(b.brokers[i].status.LastKnownLatency)
+				broker = b.brokers[i]
+				continue
+			}
+			if int(b.brokers[i].status.LastKnownLatency) < minLatency {
+				minLatency = int(b.brokers[i].status.LastKnownLatency)
+				broker = b.brokers[i]
+			}
+
+		}
+		return broker.client, nil
+	case ConnectToLowWorkLoadServer:
+		// Find server with lowest work load
+		minConnectionCount := -1
+		for i := 0; i < len(b.brokers); i++ {
+			if i == 0 {
+				minConnectionCount = int(b.brokers[i].status.ConnectionCount)
+				broker = b.brokers[i]
+				continue
+			}
+			if int(b.brokers[i].status.ConnectionCount) < minConnectionCount {
+				minConnectionCount = int(b.brokers[i].status.ConnectionCount)
+				broker = b.brokers[i]
+			}
+
+		}
+		return broker.client, nil
+	default:
+		// Random client
+		broker = b.brokers[rand.Intn(len(b.brokers))]
+		return broker.client, nil
+	}
+
 }
 
 // PublicationStream returns a publication stream based on a stream name and a
