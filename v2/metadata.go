@@ -139,9 +139,11 @@ func (p *PartitionInfo) ReadonlyTimestamps() PartitionEventTimestamps {
 
 // BrokerInfo contains information for a Liftbridge cluster node.
 type BrokerInfo struct {
-	id   string
-	host string
-	port int32
+	id             string
+	host           string
+	port           int32
+	leaderCount    int32
+	partitionCount int32
 }
 
 // ID of the broker.
@@ -162,6 +164,16 @@ func (b *BrokerInfo) Port() int32 {
 // Addr returns <host>:<port> for the broker server.
 func (b *BrokerInfo) Addr() string {
 	return fmt.Sprintf("%s:%d", b.host, b.port)
+}
+
+// Number of partition leaders exists on this broker.
+func (b *BrokerInfo) LeaderCount() int32 {
+	return b.leaderCount
+}
+
+// Total number of partitions on this broker.
+func (b *BrokerInfo) PartitionCount() int32 {
+	return b.partitionCount
 }
 
 // Metadata contains an immutable snapshot of information for a cluster and
@@ -268,9 +280,11 @@ func (m *metadataCache) update(ctx context.Context) (*Metadata, error) {
 	brokers := make(map[string]*BrokerInfo, len(resp.Brokers))
 	for _, broker := range resp.Brokers {
 		brokers[broker.Id] = &BrokerInfo{
-			id:   broker.Id,
-			host: broker.Host,
-			port: broker.Port,
+			id:             broker.Id,
+			host:           broker.Host,
+			port:           broker.Port,
+			leaderCount:    broker.LeaderCount,
+			partitionCount: broker.PartitionCount,
 		}
 	}
 

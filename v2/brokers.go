@@ -17,7 +17,7 @@ import (
 type ackReceivedFunc func(*proto.PublishResponse)
 
 type brokerStatus struct {
-	ConnectionCount int
+	ConnectionCount int32
 	// In Milisecond
 	LastKnownLatency float64
 }
@@ -237,18 +237,18 @@ func newBroker(ctx context.Context, addr string, opts []grpc.DialOption, ackRece
 		b.dispatchAcks(ackReceived)
 	}()
 
-	if err := b.updateStatus(ctx); err != nil {
+	if err := b.updateStatus(ctx, addr); err != nil {
 		return nil, err
 	}
 
 	return b, nil
 }
 
-func (b *broker) updateStatus(ctx context.Context) error {
+func (b *broker) updateStatus(ctx context.Context, addr string) error {
 	// Measure instant server response time
 	start := time.Now()
 
-	_, err := b.client.FetchMetadata(ctx, &proto.FetchMetadataRequest{})
+	resp, err := b.client.FetchMetadata(ctx, &proto.FetchMetadataRequest{})
 
 	elapsed := time.Now().Sub(start)
 
@@ -256,8 +256,25 @@ func (b *broker) updateStatus(ctx context.Context) error {
 		return err
 	}
 
-	// TODO: parse connection count from metadata
+	// Parse broker status
 	b.status.LastKnownLatency = float64(elapsed)
+
+	// Count total number of connection for this broker
+
+	for _, broker := range resp.Brokers {
+		brokerInfo := &BrokerInfo{
+			id:             broker.Id,
+			host:           broker.Host,
+			port:           broker.Port,
+			leaderCount:    broker.LeaderCount,
+			partitionCount: broker.PartitionCount,
+		}
+		if brokerInfo.Addr() == addr {
+			b.status.ConnectionCount = brokerInfo.LeaderCount() + brokerInfo.PartitionCount()
+			break
+		}
+
+	}
 
 	return nil
 
