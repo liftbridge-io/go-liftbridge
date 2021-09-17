@@ -17,7 +17,7 @@ import (
 type ackReceivedFunc func(*proto.PublishResponse)
 
 type brokerStatus struct {
-	ConnectionCount int32
+	PartitionCount int32
 	// In Milisecond
 	LastKnownLatency float64
 }
@@ -162,12 +162,12 @@ func (b *brokers) ChooseBroker(selectionCriteria int) (proto.APIClient, error) {
 		minConnectionCount := -1
 		for i := 0; i < len(b.brokers); i++ {
 			if i == 0 {
-				minConnectionCount = int(b.brokers[i].status.ConnectionCount)
+				minConnectionCount = int(b.brokers[i].status.PartitionCount)
 				broker = b.brokers[i]
 				continue
 			}
-			if int(b.brokers[i].status.ConnectionCount) < minConnectionCount {
-				minConnectionCount = int(b.brokers[i].status.ConnectionCount)
+			if int(b.brokers[i].status.PartitionCount) < minConnectionCount {
+				minConnectionCount = int(b.brokers[i].status.PartitionCount)
 				broker = b.brokers[i]
 			}
 
@@ -223,7 +223,7 @@ func newBroker(ctx context.Context, addr string, opts []grpc.DialOption, ackRece
 	b := &broker{
 		conn:   conn,
 		client: proto.NewAPIClient(conn),
-		status: &brokerStatus{ConnectionCount: 0, LastKnownLatency: 0},
+		status: &brokerStatus{PartitionCount: 0, LastKnownLatency: 0},
 	}
 
 	if b.stream, err = b.client.PublishAsync(ctx); err != nil {
@@ -270,7 +270,7 @@ func (b *broker) updateStatus(ctx context.Context, addr string) error {
 			partitionCount: broker.PartitionCount,
 		}
 		if brokerInfo.Addr() == addr {
-			b.status.ConnectionCount = brokerInfo.LeaderCount() + brokerInfo.PartitionCount()
+			b.status.PartitionCount = brokerInfo.LeaderCount() + brokerInfo.PartitionCount()
 			break
 		}
 
