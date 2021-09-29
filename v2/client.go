@@ -541,9 +541,13 @@ type client struct {
 }
 
 // Configuration to let the client knows which server it should connect to
+
+type SelectionCriteria int
+
 const (
-	ConnectToLowLatencyServer  = 0
-	ConnectToLowWorkLoadServer = 1
+	Random SelectionCriteria = iota
+	Latency
+	Workload
 )
 
 // ClientOptions are used to control the Client configuration.
@@ -593,7 +597,7 @@ type ClientOptions struct {
 	WriteBufferSize int
 
 	// Select the server to connecto to based on specific criteria
-	ServerSelection int
+	ServerSelection SelectionCriteria
 }
 
 // ConnectCtx will attempt to connect to a Liftbridge server with multiple
@@ -757,7 +761,7 @@ func WriteBufferSize(writeBufferSize int) ClientOption {
 // to server with lowest latency.
 func SetConnectionToLowLatencyServer() ClientOption {
 	return func(o *ClientOptions) error {
-		o.ServerSelection = ConnectToLowLatencyServer
+		o.ServerSelection = Latency
 		return nil
 	}
 }
@@ -766,7 +770,7 @@ func SetConnectionToLowLatencyServer() ClientOption {
 // to server with lowest work loqd.
 func SetConnectToLowWorkLoadServer() ClientOption {
 	return func(o *ClientOptions) error {
-		o.ServerSelection = ConnectToLowWorkLoadServer
+		o.ServerSelection = Workload
 		return nil
 	}
 }

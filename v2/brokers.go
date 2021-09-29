@@ -17,9 +17,8 @@ import (
 type ackReceivedFunc func(*proto.PublishResponse)
 
 type brokerStatus struct {
-	PartitionCount int32
-	// In Milisecond
-	LastKnownLatency float64
+	PartitionCount   int32
+	LastKnownLatency time.Duration
 }
 
 // brokers represents a collection of connections to brokers.
@@ -128,7 +127,7 @@ func (b *brokers) FromAddr(addr string) (proto.APIClient, error) {
 	return broker.client, nil
 }
 
-func (b *brokers) ChooseBroker(selectionCriteria int) (proto.APIClient, error) {
+func (b *brokers) ChooseBroker(selectionCriteria SelectionCriteria) (proto.APIClient, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
@@ -140,7 +139,7 @@ func (b *brokers) ChooseBroker(selectionCriteria int) (proto.APIClient, error) {
 
 	// Choose brokers based on criteria
 	switch selectionCriteria {
-	case ConnectToLowLatencyServer:
+	case Latency:
 		minLatency := -1
 
 		// Find server with lowest latency
@@ -157,7 +156,7 @@ func (b *brokers) ChooseBroker(selectionCriteria int) (proto.APIClient, error) {
 
 		}
 		return broker.client, nil
-	case ConnectToLowWorkLoadServer:
+	case Workload:
 		// Find server with lowest work load
 		minConnectionCount := -1
 		for i := 0; i < len(b.brokers); i++ {
@@ -173,9 +172,11 @@ func (b *brokers) ChooseBroker(selectionCriteria int) (proto.APIClient, error) {
 
 		}
 		return broker.client, nil
+	case Random:
+		// Return the current broker (randomly chosen)
+		return broker.client, nil
 	default:
-		// Random client
-		broker = b.brokers[rand.Intn(len(b.brokers))]
+		// Return the current broker (randomly chosen)
 		return broker.client, nil
 	}
 
@@ -257,7 +258,7 @@ func (b *broker) updateStatus(ctx context.Context, addr string) error {
 	}
 
 	// Parse broker status
-	b.status.LastKnownLatency = float64(elapsed)
+	b.status.LastKnownLatency = elapsed
 
 	// Count total number of connection for this broker
 
