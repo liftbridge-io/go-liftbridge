@@ -132,7 +132,7 @@ func (b *brokers) ChooseBroker(selectionCriteria SelectionCriteria) (proto.APICl
 	defer b.mu.RUnlock()
 
 	if len(b.brokers) == 0 {
-		return nil, errors.New("no borkers")
+		return nil, errors.New("no brokers")
 	}
 	// Initiate a random broker
 	broker := b.brokers[rand.Intn(len(b.brokers))]
@@ -158,7 +158,7 @@ func (b *brokers) ChooseBroker(selectionCriteria SelectionCriteria) (proto.APICl
 		return broker.client, nil
 	case Workload:
 		// Find server with lowest work load
-		minConnectionCount := -1
+		minPartitionCount := -1
 		for i := 0; i < len(b.brokers); i++ {
 			if i == 0 {
 				minConnectionCount = int(b.brokers[i].status.PartitionCount)
@@ -251,7 +251,7 @@ func (b *broker) updateStatus(ctx context.Context, addr string) error {
 
 	resp, err := b.client.FetchMetadata(ctx, &proto.FetchMetadataRequest{})
 
-	elapsed := time.Now().Sub(start)
+	elapsed := time.Since(start)
 
 	if err != nil {
 		return err
@@ -260,7 +260,7 @@ func (b *broker) updateStatus(ctx context.Context, addr string) error {
 	// Parse broker status
 	b.status.LastKnownLatency = elapsed
 
-	// Count total number of connection for this broker
+	// Count total number of partitions for this broker
 
 	for _, broker := range resp.Brokers {
 		brokerInfo := &BrokerInfo{
