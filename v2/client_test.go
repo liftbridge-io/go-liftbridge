@@ -1799,7 +1799,7 @@ func TestConnectToServerBasedOnLatency(t *testing.T) {
 	server2.SetupMockFetchMetadataResponse(metadataResp2)
 
 	// Perform a connection based on latency criteria
-	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port1), fmt.Sprintf("localhost:%d", port2)}, SetConnectionToLowLatencyServer())
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port1), fmt.Sprintf("localhost:%d", port2)}, SetConnectToLowLatencyServer())
 	require.NoError(t, err)
 	defer client.Close()
 	// Fetch metadata
@@ -1843,7 +1843,7 @@ func TestConnectToServerBasedOnWorkLoad(t *testing.T) {
 	server2.SetupMockFetchMetadataResponse(metadataResp)
 
 	// Perform a connection based on latency criteria
-	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port1), fmt.Sprintf("localhost:%d", port2)}, SetConnectToLowWorkLoadServer())
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port1), fmt.Sprintf("localhost:%d", port2)}, SetConnectToLowWorkloadServer())
 	require.NoError(t, err)
 	defer client.Close()
 	// Fetch metadata

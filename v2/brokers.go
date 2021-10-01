@@ -159,14 +159,15 @@ func (b *brokers) ChooseBroker(selectionCriteria SelectionCriteria) (proto.APICl
 	case Workload:
 		// Find server with lowest work load
 		minPartitionCount := -1
+
 		for i := 0; i < len(b.brokers); i++ {
 			if i == 0 {
-				minConnectionCount = int(b.brokers[i].status.PartitionCount)
+				minPartitionCount = int(b.brokers[i].status.PartitionCount)
 				broker = b.brokers[i]
 				continue
 			}
-			if int(b.brokers[i].status.PartitionCount) < minConnectionCount {
-				minConnectionCount = int(b.brokers[i].status.PartitionCount)
+			if int(b.brokers[i].status.PartitionCount) < minPartitionCount {
+				minPartitionCount = int(b.brokers[i].status.PartitionCount)
 				broker = b.brokers[i]
 			}
 

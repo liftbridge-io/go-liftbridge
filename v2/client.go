@@ -757,18 +757,18 @@ func WriteBufferSize(writeBufferSize int) ClientOption {
 	}
 }
 
-// SetConnectionToLowLatencyServer is a ClientOption to set the client to connect
+// SetConnectToLowLatencyServer is a ClientOption to set the client to connect
 // to server with lowest latency.
-func SetConnectionToLowLatencyServer() ClientOption {
+func SetConnectToLowLatencyServer() ClientOption {
 	return func(o *ClientOptions) error {
 		o.ServerSelection = Latency
 		return nil
 	}
 }
 
-// SetConnectToLowWorkLoadServer is a ClientOption to set the client to connect
+// SetConnectToLowWorkloadServer is a ClientOption to set the client to connect
 // to server with lowest work loqd.
-func SetConnectToLowWorkLoadServer() ClientOption {
+func SetConnectToLowWorkloadServer() ClientOption {
 	return func(o *ClientOptions) error {
 		o.ServerSelection = Workload
 		return nil
