@@ -7,6 +7,7 @@ import (
 	"io"
 	"math/rand"
 	"sync"
+	"time"
 
 	proto "github.com/liftbridge-io/liftbridge-api/go"
 	"github.com/serialx/hashring"
@@ -14,6 +15,11 @@ import (
 )
 
 type ackReceivedFunc func(*proto.PublishResponse)
+
+type brokerStatus struct {
+	PartitionCount   int32
+	LastKnownLatency time.Duration
+}
 
 // brokers represents a collection of connections to brokers.
 type brokers struct {
@@ -121,19 +127,60 @@ func (b *brokers) FromAddr(addr string) (proto.APIClient, error) {
 	return broker.client, nil
 }
 
-// Random returns an API client to a random broker.
-func (b *brokers) Random() (proto.APIClient, error) {
+func (b *brokers) ChooseBroker(selectionCriteria SelectionCriteria) (proto.APIClient, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
 	if len(b.brokers) == 0 {
 		return nil, errors.New("no brokers")
 	}
-
-	// TODO: use a load balancer instead.
+	// Initiate a random broker
 	broker := b.brokers[rand.Intn(len(b.brokers))]
 
-	return broker.client, nil
+	// Choose brokers based on criteria
+	switch selectionCriteria {
+	case Latency:
+		minLatency := -1
+
+		// Find server with lowest latency
+		for i := 0; i < len(b.brokers); i++ {
+			if i == 0 {
+				minLatency = int(b.brokers[i].status.LastKnownLatency)
+				broker = b.brokers[i]
+				continue
+			}
+			if int(b.brokers[i].status.LastKnownLatency) < minLatency {
+				minLatency = int(b.brokers[i].status.LastKnownLatency)
+				broker = b.brokers[i]
+			}
+
+		}
+		return broker.client, nil
+	case Workload:
+		// Find server with lowest work load
+		minPartitionCount := -1
+
+		for i := 0; i < len(b.brokers); i++ {
+			if i == 0 {
+				minPartitionCount = int(b.brokers[i].status.PartitionCount)
+				broker = b.brokers[i]
+				continue
+			}
+			if int(b.brokers[i].status.PartitionCount) < minPartitionCount {
+				minPartitionCount = int(b.brokers[i].status.PartitionCount)
+				broker = b.brokers[i]
+			}
+
+		}
+		return broker.client, nil
+	case Random:
+		// Return the current broker (randomly chosen)
+		return broker.client, nil
+	default:
+		// Return the current broker (randomly chosen)
+		return broker.client, nil
+	}
+
 }
 
 // PublicationStream returns a publication stream based on a stream name and a
@@ -166,6 +213,7 @@ type broker struct {
 	client proto.APIClient
 	stream proto.API_PublishAsyncClient
 	wg     sync.WaitGroup
+	status *brokerStatus
 }
 
 func newBroker(ctx context.Context, addr string, opts []grpc.DialOption, ackReceived ackReceivedFunc) (*broker, error) {
@@ -177,6 +225,7 @@ func newBroker(ctx context.Context, addr string, opts []grpc.DialOption, ackRece
 	b := &broker{
 		conn:   conn,
 		client: proto.NewAPIClient(conn),
+		status: &brokerStatus{PartitionCount: 0, LastKnownLatency: 0},
 	}
 
 	if b.stream, err = b.client.PublishAsync(ctx); err != nil {
@@ -190,7 +239,47 @@ func newBroker(ctx context.Context, addr string, opts []grpc.DialOption, ackRece
 		b.dispatchAcks(ackReceived)
 	}()
 
+	if err := b.updateStatus(ctx, addr); err != nil {
+		return nil, err
+	}
+
 	return b, nil
+}
+
+func (b *broker) updateStatus(ctx context.Context, addr string) error {
+	// Measure instant server response time
+	start := time.Now()
+
+	resp, err := b.client.FetchMetadata(ctx, &proto.FetchMetadataRequest{})
+
+	elapsed := time.Since(start)
+
+	if err != nil {
+		return err
+	}
+
+	// Parse broker status
+	b.status.LastKnownLatency = elapsed
+
+	// Count total number of partitions for this broker
+
+	for _, broker := range resp.Brokers {
+		brokerInfo := &BrokerInfo{
+			id:             broker.Id,
+			host:           broker.Host,
+			port:           broker.Port,
+			leaderCount:    broker.LeaderCount,
+			partitionCount: broker.PartitionCount,
+		}
+		if brokerInfo.Addr() == addr {
+			b.status.PartitionCount = brokerInfo.LeaderCount() + brokerInfo.PartitionCount()
+			break
+		}
+
+	}
+
+	return nil
+
 }
 
 func (b *broker) Close() {

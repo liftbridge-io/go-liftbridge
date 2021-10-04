@@ -1270,9 +1270,11 @@ func TestFetchMetadata(t *testing.T) {
 
 	metadataResp := &proto.FetchMetadataResponse{
 		Brokers: []*proto.Broker{{
-			Id:   "a",
-			Host: "localhost",
-			Port: int32(port),
+			Id:             "a",
+			Host:           "localhost",
+			Port:           int32(port),
+			LeaderCount:    1,
+			PartitionCount: 1,
 		}},
 		Metadata: []*proto.StreamMetadata{{
 			Name:    "foo",
@@ -1754,6 +1756,101 @@ func TestFetchPartitionMetadataNotLeader(t *testing.T) {
 	server.SetupMockFetchPartitionMetadataError(status.Error(codes.FailedPrecondition, "server is not partition leader"))
 	_, err = client.FetchPartitionMetadata(context.Background(), "foo", 0)
 	require.Error(t, err)
+}
+
+func TestConnectToServerBasedOnLatency(t *testing.T) {
+	// First server
+	server1 := newMockServer()
+	// Simulate a heavily loaded server
+	server1.SetDelayMetadataResponse()
+	defer server1.Stop(t)
+	port1 := server1.Start(t)
+
+	// Second server
+	server2 := newMockServer()
+	defer server2.Stop(t)
+	port2 := server2.Start(t)
+
+	// Given that server 1 has corrupted meta data,
+	// in which contains information on only one broker
+	metadataResp1 := &proto.FetchMetadataResponse{
+		Brokers: []*proto.Broker{{
+			Id:   "a",
+			Host: "localhost",
+			Port: int32(port1),
+		}},
+	}
+
+	// Given that server 2 has corrupted meta data,
+	// in which contains information on only 2 brokers
+	metadataResp2 := &proto.FetchMetadataResponse{
+		Brokers: []*proto.Broker{{
+			Id:   "a",
+			Host: "localhost",
+			Port: int32(port1),
+		}, {
+			Id:   "b",
+			Host: "localhost",
+			Port: int32(port2),
+		}},
+	}
+
+	server1.SetupMockFetchMetadataResponse(metadataResp1)
+	server2.SetupMockFetchMetadataResponse(metadataResp2)
+
+	// Perform a connection based on latency criteria
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port1), fmt.Sprintf("localhost:%d", port2)}, SetConnectToLowLatencyServer())
+	require.NoError(t, err)
+	defer client.Close()
+	// Fetch metadata
+	metadata, err := client.FetchMetadata(context.Background())
+	require.NoError(t, err)
+	// Require that the metadata is fetched from server 2 (lowest latency)
+	// instead of from server 1
+	require.Len(t, metadata.Brokers(), 2)
+}
+
+func TestConnectToServerBasedOnWorkLoad(t *testing.T) {
+	// First server
+	server1 := newMockServer()
+	defer server1.Stop(t)
+	port1 := server1.Start(t)
+
+	// Second server
+	server2 := newMockServer()
+	defer server2.Stop(t)
+	port2 := server2.Start(t)
+
+	// Given that server 1 that hosts 1 leader and 3 partitions
+	// and server 2 that host 2 leaders and 3 partitions
+	metadataResp := &proto.FetchMetadataResponse{
+		Brokers: []*proto.Broker{{
+			Id:             "a",
+			Host:           "localhost",
+			Port:           int32(port1),
+			PartitionCount: 3,
+			LeaderCount:    1,
+		}, {
+			Id:             "b",
+			Host:           "localhost",
+			Port:           int32(port2),
+			PartitionCount: 3,
+			LeaderCount:    2,
+		}},
+	}
+
+	server1.SetupMockFetchMetadataResponse(metadataResp)
+	server2.SetupMockFetchMetadataResponse(metadataResp)
+
+	// Perform a connection based on latency criteria
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port1), fmt.Sprintf("localhost:%d", port2)}, SetConnectToLowWorkloadServer())
+	require.NoError(t, err)
+	defer client.Close()
+	// Fetch metadata
+	metadata, err := client.FetchMetadata(context.Background())
+	require.NoError(t, err)
+	// Require that the metadata is fetched from server 1 (lowest workload)
+	require.Len(t, metadata.Brokers(), 2)
 }
 
 func ExampleConnect() {
