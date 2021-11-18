@@ -525,6 +525,11 @@ type Client interface {
 
 	// FetchPartitionMetadata retrieves the metadata of a particular partition
 	FetchPartitionMetadata(ctx context.Context, stream string, partition int32) (*PartitionInfo, error)
+
+	// CreateConsumer creates a consumer that is part of a consumer group which
+	// consumes a set of streams. Liftbridge handles assigning partitions to
+	// the group members and tracking the group's position in the streams.
+	CreateConsumer(groupID string, opts ...ConsumerOption) (*Consumer, error)
 }
 
 // client implements the Client interface. It maintains a pool of connections
@@ -1421,6 +1426,13 @@ func (c *client) FetchPartitionMetadata(ctx context.Context, stream string, part
 	return partitionInfo, nil
 }
 
+// CreateConsumer creates a consumer that is part of a consumer group which
+// consumes a set of streams. Liftbridge handles assigning partitions to the
+// group members and tracking the group's position in the streams.
+func (c *client) CreateConsumer(groupID string, options ...ConsumerOption) (*Consumer, error) {
+	return c.newConsumer(groupID, options)
+}
+
 // SetCursor persists a cursor position for a particular stream partition.
 // This can be used to checkpoint a consumer's position in a stream to resume
 // processing later.
@@ -1580,7 +1592,7 @@ func (c *client) subscribe(ctx context.Context, stream string,
 		err    error
 	)
 	for i := 0; i < 5; i++ {
-		client, err = c.getAPIClient(stream, opts.Partition, opts.ReadISRReplica)
+		client, err = c.getAPIClientForPartition(stream, opts.Partition, opts.ReadISRReplica)
 		if err != nil {
 			sleepContext(ctx, 50*time.Millisecond)
 			c.updateMetadata(ctx)
@@ -1714,11 +1726,24 @@ LOOP:
 }
 
 // getAPIClient returns the API client for the given partition.
-func (c *client) getAPIClient(stream string, partition int32, readISRReplica bool) (proto.APIClient, error) {
-	addr, err := c.metadata.getAddr(stream, partition, readISRReplica)
+func (c *client) getAPIClientForPartition(stream string, partition int32, readISRReplica bool) (proto.APIClient, error) {
+	addr, err := c.metadata.getAddrForPartition(stream, partition, readISRReplica)
 	if err != nil {
 		return nil, err
 	}
+	return c.getAPIClient(addr)
+}
+
+// getAPIClientForBroker returns the API client for the given broker.
+func (c *client) getAPIClientForBroker(id string) (proto.APIClient, error) {
+	addr, err := c.metadata.getAddrForBroker(id)
+	if err != nil {
+		return nil, err
+	}
+	return c.getAPIClient(addr)
+}
+
+func (c *client) getAPIClient(addr string) (proto.APIClient, error) {
 	client, err := c.brokers.FromAddr(addr)
 	if err != nil {
 		return nil, err
@@ -1768,7 +1793,7 @@ func (c *client) doResilientLeaderRPC(ctx context.Context, rpc func(client proto
 		client proto.APIClient
 	)
 	for i := 0; i < 5; i++ {
-		client, err = c.getAPIClient(stream, partition, false)
+		client, err = c.getAPIClientForPartition(stream, partition, false)
 		if err != nil {
 			sleepContext(ctx, 50*time.Millisecond)
 			c.updateMetadata(ctx)

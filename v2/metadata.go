@@ -213,6 +213,11 @@ func (m *Metadata) Brokers() []*BrokerInfo {
 	return brokers
 }
 
+// Broker returns the broker for the given id or nil if it doesn't exist.
+func (m *Metadata) Broker(id string) *BrokerInfo {
+	return m.brokers[id]
+}
+
 // Addrs returns the list of known broker addresses.
 func (m *Metadata) Addrs() []string {
 	addrs := make([]string, 0, len(m.addrs))
@@ -347,7 +352,7 @@ func (m *metadataCache) getAddrs() []string {
 }
 
 // getAddr returns the broker address for the given stream partition.
-func (m *metadataCache) getAddr(stream string, partitionID int32, readISRReplica bool) (string, error) {
+func (m *metadataCache) getAddrForPartition(stream string, partitionID int32, readISRReplica bool) (string, error) {
 	m.mu.RLock()
 	metadata := m.metadata
 	m.mu.RUnlock()
@@ -369,6 +374,18 @@ func (m *metadataCache) getAddr(stream string, partitionID int32, readISRReplica
 		return "", errors.New("no known leader for partition")
 	}
 	return partition.Leader().Addr(), nil
+}
+
+// getAddrForBroker returns the address for the given broker id.
+func (m *metadataCache) getAddrForBroker(id string) (string, error) {
+	m.mu.RLock()
+	metadata := m.metadata
+	m.mu.RUnlock()
+	broker := metadata.Broker(id)
+	if broker == nil {
+		return "", fmt.Errorf("no known broker for id %s", id)
+	}
+	return broker.Addr(), nil
 }
 
 // get returns the current Metadata.
