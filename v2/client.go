@@ -1022,6 +1022,11 @@ type SubscriptionOptions struct {
 	// Resume controls if a paused partition can be resumed before
 	// subscription.
 	Resume bool
+
+	// Consumer group fields.
+	groupID         string
+	consumerID      string
+	assignmentEpoch uint64
 }
 
 // SubscriptionOption is a function on the SubscriptionOptions for a
@@ -1054,6 +1059,15 @@ func StartAtTimeDelta(ago time.Duration) SubscriptionOption {
 	return func(o *SubscriptionOptions) error {
 		o.StartPosition = StartPosition(proto.StartPosition_TIMESTAMP)
 		o.StartTimestamp = time.Now().Add(-ago)
+		return nil
+	}
+}
+
+// StartAtNewOnly sets the subscription start position to receive only new
+// messages received in the stream.
+func StartAtNewOnly() SubscriptionOption {
+	return func(o *SubscriptionOptions) error {
+		o.StartPosition = StartPosition(proto.StartPosition_NEW_ONLY)
 		return nil
 	}
 }
@@ -1136,6 +1150,22 @@ func Partition(partition int32) SubscriptionOption {
 			return fmt.Errorf("invalid partition: %d", partition)
 		}
 		o.Partition = partition
+		return nil
+	}
+}
+
+// consumer specifies this subscribe request is for a consumer group member.
+func consumer(groupID, consumerID string, assignmentEpoch uint64) SubscriptionOption {
+	return func(o *SubscriptionOptions) error {
+		if groupID == "" {
+			return errors.New("group id cannot be empty")
+		}
+		if consumerID == "" {
+			return errors.New("consumer id cannot be empty")
+		}
+		o.groupID = groupID
+		o.consumerID = consumerID
+		o.assignmentEpoch = assignmentEpoch
 		return nil
 	}
 }
@@ -1599,16 +1629,19 @@ func (c *client) subscribe(ctx context.Context, stream string,
 			continue
 		}
 		req := &proto.SubscribeRequest{
-			Stream:         stream,
-			StartPosition:  opts.StartPosition.toProto(),
-			StartOffset:    opts.StartOffset,
-			StartTimestamp: opts.StartTimestamp.UnixNano(),
-			StopPosition:   opts.StopPosition.toProto(),
-			StopOffset:     opts.StopOffset,
-			StopTimestamp:  opts.StopTimestamp.UnixNano(),
-			Partition:      opts.Partition,
-			ReadISRReplica: opts.ReadISRReplica,
-			Resume:         opts.Resume,
+			Stream:          stream,
+			StartPosition:   opts.StartPosition.toProto(),
+			StartOffset:     opts.StartOffset,
+			StartTimestamp:  opts.StartTimestamp.UnixNano(),
+			StopPosition:    opts.StopPosition.toProto(),
+			StopOffset:      opts.StopOffset,
+			StopTimestamp:   opts.StopTimestamp.UnixNano(),
+			Partition:       opts.Partition,
+			ReadISRReplica:  opts.ReadISRReplica,
+			Resume:          opts.Resume,
+			GroupId:         opts.groupID,
+			ConsumerId:      opts.consumerID,
+			AssignmentEpoch: opts.assignmentEpoch,
 		}
 		st, err = client.Subscribe(ctx, req)
 		if err != nil {

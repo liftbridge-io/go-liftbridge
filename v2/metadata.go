@@ -294,7 +294,7 @@ func (m *metadataCache) update(ctx context.Context) (*Metadata, error) {
 	}
 
 	streams := make(map[string]*StreamInfo)
-	for _, streamMetadata := range resp.Metadata {
+	for _, streamMetadata := range resp.StreamMetadata {
 		stream := &StreamInfo{
 			subject:      streamMetadata.Subject,
 			name:         streamMetadata.Name,
