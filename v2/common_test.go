@@ -56,6 +56,7 @@ func newMockServer() *mockServer {
 	return &mockServer{
 		Server:  server,
 		mockAPI: api,
+		stopped: make(chan struct{}),
 	}
 }
 
@@ -74,7 +75,6 @@ func (m *mockServer) startOnPort(t require.TestingT, port int) int {
 		require.NoError(t, m.Serve(l))
 	}()
 	m.listener = l
-	m.stopped = make(chan struct{})
 
 	var (
 		addr     = l.Addr()
