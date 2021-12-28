@@ -1582,7 +1582,7 @@ func (c *client) subscribe(ctx context.Context, stream string,
 	for i := 0; i < 5; i++ {
 		client, err = c.getAPIClient(stream, opts.Partition, opts.ReadISRReplica)
 		if err != nil {
-			sleepContext(ctx, 50*time.Millisecond)
+			sleepContext(ctx, time.Duration(10+i*50)*time.Millisecond)
 			c.updateMetadata(ctx)
 			continue
 		}
@@ -1601,7 +1601,7 @@ func (c *client) subscribe(ctx context.Context, stream string,
 		st, err = client.Subscribe(ctx, req)
 		if err != nil {
 			if status.Code(err) == codes.Unavailable {
-				sleepContext(ctx, 50*time.Millisecond)
+				sleepContext(ctx, time.Duration(10+i*50)*time.Millisecond)
 				c.updateMetadata(ctx)
 				continue
 			}
@@ -1620,6 +1620,10 @@ func (c *client) subscribe(ctx context.Context, stream string,
 		}
 		if err != nil {
 			switch status.Code(err) {
+			case codes.Unavailable:
+				sleepContext(ctx, time.Duration(10+i*50)*time.Millisecond)
+				c.updateMetadata(ctx)
+				continue
 			case codes.NotFound:
 				err = ErrNoSuchPartition
 			case codes.ResourceExhausted:
