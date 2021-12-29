@@ -493,7 +493,6 @@ func (m *mockAPI) PublishAsync(stream proto.API_PublishAsyncServer) error {
 	m.mu.Lock()
 	if m.publishAsyncErr != nil {
 		err := m.publishAsyncErr
-		m.publishAsyncErr = nil
 		if m.autoClearError {
 			m.publishAsyncErr = nil
 		}

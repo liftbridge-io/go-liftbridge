@@ -1095,6 +1095,63 @@ func TestPublishAsyncInternalError(t *testing.T) {
 	}
 }
 
+func TestPublishAsyncReconnect(t *testing.T) {
+	server := newMockServer()
+	server.SetAutoClearError()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
+	server.SetupMockPublishAsyncError(status.Error(codes.Unavailable, "disconnected"))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)})
+	require.NoError(t, err)
+	defer client.Close()
+
+	expectedAck := &proto.Ack{
+		Stream:           "foo",
+		PartitionSubject: "foo",
+		MsgSubject:       "foo",
+		Offset:           0,
+		AckInbox:         "ack",
+		AckPolicy:        proto.AckPolicy_LEADER,
+	}
+
+	server.SetupMockPublishAsyncResponse(&proto.PublishResponse{Ack: expectedAck})
+
+	ackC := make(chan *Ack)
+	err = client.PublishAsync(context.Background(), "foo", []byte("hello"),
+		func(ack *Ack, err error) {
+			require.NoError(t, err)
+			ackC <- ack
+		},
+	)
+	require.NoError(t, err)
+
+	select {
+	case ack := <-ackC:
+		require.Equal(t, expectedAck.Stream, ack.Stream())
+		require.Equal(t, expectedAck.PartitionSubject, ack.PartitionSubject())
+		require.Equal(t, expectedAck.MsgSubject, ack.MessageSubject())
+		require.Equal(t, expectedAck.Offset, ack.Offset())
+		require.Equal(t, expectedAck.AckInbox, ack.AckInbox())
+		require.Equal(t, expectedAck.CorrelationId, ack.CorrelationID())
+		require.Equal(t, AckPolicy(expectedAck.AckPolicy), ack.AckPolicy())
+	case <-time.After(time.Second):
+		t.Fatal("Did not receive expected ack")
+	}
+
+	req := server.GetPublishAsyncRequests()[0]
+	require.Equal(t, []byte(nil), req.Key)
+	require.Equal(t, []byte("hello"), req.Value)
+	require.Equal(t, "foo", req.Stream)
+	require.Equal(t, int32(0), req.Partition)
+	require.Equal(t, map[string][]byte(nil), req.Headers)
+	require.Equal(t, "", req.AckInbox)
+	require.NotEqual(t, "", req.CorrelationId)
+	require.Equal(t, proto.AckPolicy_LEADER, req.AckPolicy)
+}
+
 func TestPublishToPartition(t *testing.T) {
 	server := newMockServer()
 	defer server.Stop(t)
