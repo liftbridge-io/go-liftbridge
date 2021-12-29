@@ -743,12 +743,12 @@ func TestSubscribeServerUnavailableRetry(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
+	// Stop the server.
 	server.Stop(t)
 	server = newMockServer()
-
 	server.SetAutoClearError()
-
 	defer server.Stop(t)
+
 	server.SetupMockFetchMetadataResponse(metadataResp)
 	timestamp := time.Now().UnixNano()
 	messages := []*proto.Message{
@@ -770,6 +770,7 @@ func TestSubscribeServerUnavailableRetry(t *testing.T) {
 	server.SetupMockSubscribeAsyncError(status.Error(codes.Unavailable, "temporarily unavailable"))
 	server.SetupMockSubscribeMessages(messages)
 
+	// Delay the start until after the subscribe call to force a retry.
 	go func() {
 		time.Sleep(50 * time.Millisecond)
 		server.StartOnPort(t, port)
