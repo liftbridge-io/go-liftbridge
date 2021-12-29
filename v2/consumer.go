@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -153,7 +155,8 @@ type Consumer struct {
 	client        *client
 	closed        chan struct{}
 	mu            sync.RWMutex
-	subscriptions map[string]streamSubscriptions
+	subscriptions sync.Map // maps "<stream>-<partition>" to a subscription
+	wg            sync.WaitGroup
 	ctx           context.Context
 	cancelCtx     context.CancelFunc
 }
@@ -176,11 +179,10 @@ func (c *client) newConsumer(groupID string, options []ConsumerOption) (*Consume
 	}
 
 	cons := &Consumer{
-		opts:          opts,
-		groupID:       groupID,
-		client:        c,
-		closed:        make(chan struct{}),
-		subscriptions: make(map[string]streamSubscriptions),
+		opts:    opts,
+		groupID: groupID,
+		client:  c,
+		closed:  make(chan struct{}),
 	}
 	return cons, nil
 }
@@ -191,7 +193,8 @@ func (c *Consumer) Subscribe(ctx context.Context, streams []string, handler Hand
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.ctx != nil {
-		return errors.New("subscribe has already been called - cancel previous Context before calling Subscribe again")
+		return errors.New("subscribe has already been called " +
+			"- cancel previous Context before calling Subscribe again")
 	}
 
 	joinReq := &proto.JoinConsumerGroupRequest{
@@ -223,9 +226,11 @@ func (c *Consumer) Subscribe(ctx context.Context, streams []string, handler Hand
 			continue
 		}
 		c.ctx, c.cancelCtx = context.WithCancel(ctx)
-		go c.consumerLoop(c.ctx, client, interval, resp.CoordinatorEpoch, c.wrapHandler(handler))
+		c.startGoroutine(func() {
+			c.consumerLoop(c.ctx, client, interval, resp.CoordinatorEpoch, c.wrapHandler(handler))
+		})
 		if c.opts.AutoCheckpointInterval > 0 {
-			go c.checkpointLoop(c.ctx)
+			c.startGoroutine(func() { c.checkpointLoop(c.ctx) })
 		}
 		return nil
 	}
@@ -249,30 +254,34 @@ func (c *Consumer) Checkpoint(ctx context.Context) error {
 		c.mu.RUnlock()
 		return errors.New("consumer is not currently subscribed to any streams")
 	}
-	cursors := make(map[string]map[int32]cursor)
-	for stream, streamSubscriptions := range c.subscriptions {
-		for partition, subscription := range streamSubscriptions {
-			offset := atomic.LoadInt64(&subscription.offset)
-			if offset == -1 {
-				continue
-			}
-			lastCommittedOffset := atomic.LoadInt64(&subscription.lastCommittedOffset)
-			if lastCommittedOffset == offset {
-				continue
-			}
-			streamCursors, ok := cursors[stream]
-			if !ok {
-				streamCursors = make(map[int32]cursor)
-				cursors[stream] = streamCursors
-			}
-			streamCursors[partition] = cursor{sub: subscription, offset: offset}
-		}
-	}
 	c.mu.RUnlock()
+
+	cursors := make(map[string]map[int32]cursor)
+	c.subscriptions.Range(func(key, value interface{}) bool {
+		var (
+			stream, partition = parseSubscriptionKey(key.(string))
+			subscription      = value.(*subscription)
+			offset            = atomic.LoadInt64(&subscription.offset)
+		)
+		if offset == -1 {
+			return true
+		}
+		lastCommittedOffset := atomic.LoadInt64(&subscription.lastCommittedOffset)
+		if lastCommittedOffset == offset {
+			return true
+		}
+		streamCursors, ok := cursors[stream]
+		if !ok {
+			streamCursors = make(map[int32]cursor)
+			cursors[stream] = streamCursors
+		}
+		streamCursors[partition] = cursor{sub: subscription, offset: offset}
+		return true
+	})
 
 	for stream, partitions := range cursors {
 		for partition, cursor := range partitions {
-			if err := c.client.SetCursor(ctx, c.groupID, stream, partition, cursor.offset); err != nil {
+			if err := c.client.SetCursor(ctx, c.cursorID(), stream, partition, cursor.offset); err != nil {
 				return err
 			}
 			atomic.StoreInt64(&cursor.sub.lastCommittedOffset, cursor.offset)
@@ -300,7 +309,7 @@ func (c *Consumer) Close() error {
 	// TODO make RPC to leave group
 
 	close(c.closed)
-	c.subscriptions = make(map[string]streamSubscriptions)
+	c.wg.Wait()
 	return nil
 }
 
@@ -325,25 +334,28 @@ func (c *Consumer) consumerLoop(ctx context.Context, client proto.APIClient,
 			ConsumerId:       c.opts.ConsumerID,
 			CoordinatorEpoch: coordinatorEpoch,
 		}
-		var resp *proto.FetchConsumerGroupAssignmentsResponse
-		err := c.client.doResilientRPC(ctx, func(client proto.APIClient) error {
-			r, err := client.FetchConsumerGroupAssignments(ctx, req)
+		var (
+			resp *proto.FetchConsumerGroupAssignmentsResponse
+			err  error
+		)
+		for i := 0; i < 5; i++ {
+			resp, err = client.FetchConsumerGroupAssignments(ctx, req)
 			if err != nil {
-				return err
+				sleepContext(ctx, 50*time.Millisecond)
+				continue
 			}
-			resp = r
-			return nil
-		})
-		if err != nil {
+			break
+		}
+		if resp == nil {
+			// TODO: handle this - also need to handle coordinator failovers
 			panic(err)
-			// TODO: need to handle this somehow
-			// extend FetchMetadata to include info on consumer groups
 		}
 
 		c.reconcileSubscriptions(ctx, resp.Assignments, resp.AssignmentEpoch, handler)
 
 		select {
 		case <-c.closed:
+			c.resetSubscriptions()
 			return
 		case <-time.After(interval):
 		}
@@ -362,50 +374,43 @@ func (c *Consumer) reconcileSubscriptions(ctx context.Context, assignments []*pr
 		assignmentsMap[assignment.Stream] = m
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	// Cancel all subscriptions that we no longer have assignments for.
-	for stream, subscriptions := range c.subscriptions {
-		for partition, subscription := range subscriptions {
-			streamAssignments, ok := assignmentsMap[stream]
-			if !ok {
-				subscription.cancel()
-				delete(subscriptions, partition)
-			}
-			if _, ok := streamAssignments[partition]; !ok {
-				subscription.cancel()
-				delete(subscriptions, partition)
-			}
-			if len(subscriptions) == 0 {
-				delete(c.subscriptions, stream)
-			}
+	c.subscriptions.Range(func(key, value interface{}) bool {
+		var (
+			stream, partition = parseSubscriptionKey(key.(string))
+			subscription      = value.(*subscription)
+		)
+		streamAssignments, ok := assignmentsMap[stream]
+		if !ok {
+			subscription.cancel()
+			c.subscriptions.Delete(key)
+		} else if _, ok := streamAssignments[partition]; !ok {
+			subscription.cancel()
+			c.subscriptions.Delete(key)
 		}
-	}
+		return true
+	})
 
 	// Ensure we have subscriptions for partitions we do have assignments for.
 	for stream, assignments := range assignmentsMap {
-		subscriptions, ok := c.subscriptions[stream]
-		if !ok {
-			subscriptions = make(streamSubscriptions)
-			c.subscriptions[stream] = subscriptions
-		}
 		for partition := range assignments {
 			// Check if subscription already exists for partition.
-			if _, ok := subscriptions[partition]; ok {
+			key := subscriptionKey(stream, partition)
+			if _, ok := c.subscriptions.Load(key); ok {
 				continue
 			}
 			// Otherwise set up a new subscription.
 			cancel, err := c.subscribeToPartition(ctx, stream, partition, assignmentEpoch, handler)
 			if err != nil {
 				// TODO: should we wrap this error?
-				go handler(nil, err)
+				c.startGoroutine(func() { handler(nil, err) })
 				continue
 			}
-			subscriptions[partition] = &subscription{
-				offset:    -1,
-				ctxCancel: cancel,
-			}
+			c.subscriptions.Store(key, &subscription{
+				offset:              -1,
+				lastCommittedOffset: -1,
+				ctxCancel:           cancel,
+			})
 		}
 	}
 }
@@ -429,7 +434,7 @@ func (c *Consumer) subscribeToPartition(ctx context.Context, stream string, part
 }
 
 func (c *Consumer) getStartPosition(ctx context.Context, stream string, partition int32) (SubscriptionOption, error) {
-	cursor, err := c.client.FetchCursor(ctx, c.groupID, stream, partition)
+	cursor, err := c.client.FetchCursor(ctx, c.cursorID(), stream, partition)
 	if err != nil {
 		return nil, err
 	}
@@ -457,9 +462,57 @@ func (c *Consumer) getStartPosition(ctx context.Context, stream string, partitio
 func (c *Consumer) wrapHandler(handler Handler) Handler {
 	return func(msg *Message, err error) {
 		if msg != nil {
-			subscription := c.subscriptions[msg.Stream()][msg.Partition()]
-			atomic.StoreInt64(&subscription.offset, msg.Offset())
+			subscription := c.getSubscription(msg.Stream(), msg.Partition())
+			if subscription != nil {
+				atomic.StoreInt64(&subscription.offset, msg.Offset())
+			}
 		}
 		handler(msg, err)
 	}
+}
+
+func (c *Consumer) getSubscription(stream string, partition int32) *subscription {
+	sub, ok := c.subscriptions.Load(subscriptionKey(stream, partition))
+	if !ok {
+		return nil
+	}
+	return sub.(*subscription)
+}
+
+func (c *Consumer) resetSubscriptions() {
+	c.subscriptions.Range(func(key interface{}, value interface{}) bool {
+		c.subscriptions.Delete(key)
+		return true
+	})
+}
+
+func (c *Consumer) cursorID() string {
+	return fmt.Sprintf("__group:%s", c.groupID)
+}
+
+func (c *Consumer) startGoroutine(f func()) {
+	c.wg.Add(1)
+	go func() {
+		f()
+		c.wg.Done()
+	}()
+}
+
+func subscriptionKey(stream string, partition int32) string {
+	return fmt.Sprintf("%s-%d", stream, partition)
+}
+
+func parseSubscriptionKey(key string) (string, int32) {
+	idx := strings.LastIndex(key, "-")
+	if idx == -1 {
+		panic(fmt.Sprintf("invalid subscription key %s", key))
+	}
+	var (
+		stream         = key[:idx]
+		partition, err = strconv.ParseInt(key[idx+1:], 10, 32)
+	)
+	if err != nil {
+		panic(fmt.Sprintf("invalid subscription key %s", key))
+	}
+	return stream, int32(partition)
 }
