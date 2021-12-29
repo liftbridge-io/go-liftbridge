@@ -13,6 +13,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand"
 	"sync"
 	"time"
@@ -1284,7 +1285,7 @@ func (c *client) publishAsync(ctx context.Context, streamName string, value []by
 		return err
 	}
 
-	stream, err := c.brokers.PublicationStream(streamName, req.Partition)
+	grpcClient, err := c.brokers.GetGrpcClient(streamName, req.Partition)
 	if err != nil {
 		return fmt.Errorf("broker for stream: %w", err)
 	}
@@ -1315,15 +1316,27 @@ func (c *client) publishAsync(ctx context.Context, streamName string, value []by
 		c.mu.Unlock()
 	}
 
-	if err := stream.Send(req); err != nil {
-		c.removeAckContext(req.CorrelationId)
-		if status.Code(err) == codes.FailedPrecondition {
-			err = ErrReadonlyPartition
+	for i := 0; i < 5; i++ {
+		stream := grpcClient.AsyncClient()
+		if e := stream.Send(req); e != nil {
+			err = e
+			if e == io.EOF {
+				// We were disconnected, so attempt to use the reconnected
+				// stream (the dispatchAcks goroutine will attempt to
+				// reconnect).
+				sleepContext(ctx, 50*time.Millisecond)
+				continue
+			}
+			if status.Code(e) == codes.FailedPrecondition {
+				e = ErrReadonlyPartition
+			}
+			c.removeAckContext(req.CorrelationId)
+			return e
 		}
-		return err
+		return nil
 	}
 
-	return nil
+	return err
 }
 
 // PublishToSubject publishes a new message to the NATS subject. Note that
@@ -1624,7 +1637,7 @@ func (c *client) subscribe(ctx context.Context, stream string,
 	for i := 0; i < 5; i++ {
 		client, err = c.getAPIClientForPartition(stream, opts.Partition, opts.ReadISRReplica)
 		if err != nil {
-			sleepContext(ctx, 50*time.Millisecond)
+			sleepContext(ctx, time.Duration(10+i*50)*time.Millisecond)
 			c.updateMetadata(ctx)
 			continue
 		}
@@ -1646,7 +1659,7 @@ func (c *client) subscribe(ctx context.Context, stream string,
 		st, err = client.Subscribe(ctx, req)
 		if err != nil {
 			if status.Code(err) == codes.Unavailable {
-				sleepContext(ctx, 50*time.Millisecond)
+				sleepContext(ctx, time.Duration(10+i*50)*time.Millisecond)
 				c.updateMetadata(ctx)
 				continue
 			}
@@ -1665,6 +1678,10 @@ func (c *client) subscribe(ctx context.Context, stream string,
 		}
 		if err != nil {
 			switch status.Code(err) {
+			case codes.Unavailable:
+				sleepContext(ctx, time.Duration(10+i*50)*time.Millisecond)
+				c.updateMetadata(ctx)
+				continue
 			case codes.NotFound:
 				err = ErrNoSuchPartition
 			case codes.ResourceExhausted:
