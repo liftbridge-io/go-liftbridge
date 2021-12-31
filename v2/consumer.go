@@ -227,7 +227,7 @@ func (c *Consumer) Subscribe(ctx context.Context, streams []string, handler Hand
 		}
 		c.ctx, c.cancelCtx = context.WithCancel(ctx)
 		c.startGoroutine(func() {
-			c.consumerLoop(c.ctx, client, interval, resp.CoordinatorEpoch, c.wrapHandler(handler))
+			c.consumerLoop(c.ctx, client, interval, resp.Epoch, c.wrapHandler(handler))
 		})
 		if c.opts.AutoCheckpointInterval > 0 {
 			c.startGoroutine(func() { c.checkpointLoop(c.ctx) })
@@ -326,13 +326,13 @@ func (c *Consumer) checkpointLoop(ctx context.Context) {
 }
 
 func (c *Consumer) consumerLoop(ctx context.Context, client proto.APIClient,
-	interval time.Duration, coordinatorEpoch uint64, handler Handler) {
+	interval time.Duration, epoch uint64, handler Handler) {
 
 	for {
 		req := &proto.FetchConsumerGroupAssignmentsRequest{
-			GroupId:          c.groupID,
-			ConsumerId:       c.opts.ConsumerID,
-			CoordinatorEpoch: coordinatorEpoch,
+			GroupId:    c.groupID,
+			ConsumerId: c.opts.ConsumerID,
+			Epoch:      epoch,
 		}
 		var (
 			resp *proto.FetchConsumerGroupAssignmentsResponse
@@ -351,7 +351,7 @@ func (c *Consumer) consumerLoop(ctx context.Context, client proto.APIClient,
 			panic(err)
 		}
 
-		c.reconcileSubscriptions(ctx, resp.Assignments, resp.AssignmentEpoch, handler)
+		c.reconcileSubscriptions(ctx, resp.Assignments, resp.Epoch, handler)
 
 		select {
 		case <-c.closed:
@@ -363,7 +363,7 @@ func (c *Consumer) consumerLoop(ctx context.Context, client proto.APIClient,
 }
 
 func (c *Consumer) reconcileSubscriptions(ctx context.Context, assignments []*proto.PartitionAssignment,
-	assignmentEpoch uint64, handler Handler) {
+	epoch uint64, handler Handler) {
 
 	assignmentsMap := make(map[string]map[int32]struct{}, len(assignments))
 	for _, assignment := range assignments {
@@ -400,7 +400,7 @@ func (c *Consumer) reconcileSubscriptions(ctx context.Context, assignments []*pr
 				continue
 			}
 			// Otherwise set up a new subscription.
-			cancel, err := c.subscribeToPartition(ctx, stream, partition, assignmentEpoch, handler)
+			cancel, err := c.subscribeToPartition(ctx, stream, partition, epoch, handler)
 			if err != nil {
 				// TODO: should we wrap this error?
 				c.startGoroutine(func() { handler(nil, err) })
@@ -416,7 +416,7 @@ func (c *Consumer) reconcileSubscriptions(ctx context.Context, assignments []*pr
 }
 
 func (c *Consumer) subscribeToPartition(ctx context.Context, stream string, partition int32,
-	assignmentEpoch uint64, handler Handler) (context.CancelFunc, error) {
+	epoch uint64, handler Handler) (context.CancelFunc, error) {
 
 	startPosition, err := c.getStartPosition(ctx, stream, partition)
 	if err != nil {
@@ -425,7 +425,7 @@ func (c *Consumer) subscribeToPartition(ctx context.Context, stream string, part
 
 	subCtx, cancel := context.WithCancel(ctx)
 	if err := c.client.Subscribe(subCtx, stream, handler, Partition(partition),
-		startPosition, consumer(c.groupID, c.opts.ConsumerID, assignmentEpoch)); err != nil {
+		startPosition, consumer(c.groupID, c.opts.ConsumerID, epoch)); err != nil {
 		cancel()
 		return nil, err
 	}
@@ -461,13 +461,13 @@ func (c *Consumer) getStartPosition(ctx context.Context, stream string, partitio
 
 func (c *Consumer) wrapHandler(handler Handler) Handler {
 	return func(msg *Message, err error) {
+		handler(msg, err)
 		if msg != nil {
 			subscription := c.getSubscription(msg.Stream(), msg.Partition())
 			if subscription != nil {
 				atomic.StoreInt64(&subscription.offset, msg.Offset())
 			}
 		}
-		handler(msg, err)
 	}
 }
 

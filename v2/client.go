@@ -1025,9 +1025,9 @@ type SubscriptionOptions struct {
 	Resume bool
 
 	// Consumer group fields.
-	groupID         string
-	consumerID      string
-	assignmentEpoch uint64
+	groupID    string
+	consumerID string
+	groupEpoch uint64
 }
 
 // SubscriptionOption is a function on the SubscriptionOptions for a
@@ -1156,7 +1156,7 @@ func Partition(partition int32) SubscriptionOption {
 }
 
 // consumer specifies this subscribe request is for a consumer group member.
-func consumer(groupID, consumerID string, assignmentEpoch uint64) SubscriptionOption {
+func consumer(groupID, consumerID string, epoch uint64) SubscriptionOption {
 	return func(o *SubscriptionOptions) error {
 		if groupID == "" {
 			return errors.New("group id cannot be empty")
@@ -1166,7 +1166,7 @@ func consumer(groupID, consumerID string, assignmentEpoch uint64) SubscriptionOp
 		}
 		o.groupID = groupID
 		o.consumerID = consumerID
-		o.assignmentEpoch = assignmentEpoch
+		o.groupEpoch = epoch
 		return nil
 	}
 }
@@ -1630,10 +1630,34 @@ func (c *client) waitForStreamMetadata(ctx context.Context, stream string) (*Met
 func (c *client) subscribe(ctx context.Context, stream string,
 	opts *SubscriptionOptions) (proto.API_SubscribeClient, error) {
 	var (
-		client proto.APIClient
-		st     proto.API_SubscribeClient
-		err    error
+		client   proto.APIClient
+		st       proto.API_SubscribeClient
+		err      error
+		consumer *proto.Consumer
 	)
+
+	if opts.groupID != "" {
+		consumer = &proto.Consumer{
+			GroupId:    opts.groupID,
+			GroupEpoch: opts.groupEpoch,
+			ConsumerId: opts.consumerID,
+		}
+	}
+
+	req := &proto.SubscribeRequest{
+		Stream:         stream,
+		StartPosition:  opts.StartPosition.toProto(),
+		StartOffset:    opts.StartOffset,
+		StartTimestamp: opts.StartTimestamp.UnixNano(),
+		StopPosition:   opts.StopPosition.toProto(),
+		StopOffset:     opts.StopOffset,
+		StopTimestamp:  opts.StopTimestamp.UnixNano(),
+		Partition:      opts.Partition,
+		ReadISRReplica: opts.ReadISRReplica,
+		Resume:         opts.Resume,
+		Consumer:       consumer,
+	}
+
 	for i := 0; i < 5; i++ {
 		client, err = c.getAPIClientForPartition(stream, opts.Partition, opts.ReadISRReplica)
 		if err != nil {
@@ -1641,21 +1665,7 @@ func (c *client) subscribe(ctx context.Context, stream string,
 			c.updateMetadata(ctx)
 			continue
 		}
-		req := &proto.SubscribeRequest{
-			Stream:          stream,
-			StartPosition:   opts.StartPosition.toProto(),
-			StartOffset:     opts.StartOffset,
-			StartTimestamp:  opts.StartTimestamp.UnixNano(),
-			StopPosition:    opts.StopPosition.toProto(),
-			StopOffset:      opts.StopOffset,
-			StopTimestamp:   opts.StopTimestamp.UnixNano(),
-			Partition:       opts.Partition,
-			ReadISRReplica:  opts.ReadISRReplica,
-			Resume:          opts.Resume,
-			GroupId:         opts.groupID,
-			ConsumerId:      opts.consumerID,
-			AssignmentEpoch: opts.assignmentEpoch,
-		}
+
 		st, err = client.Subscribe(ctx, req)
 		if err != nil {
 			if status.Code(err) == codes.Unavailable {
