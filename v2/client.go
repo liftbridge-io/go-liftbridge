@@ -436,6 +436,53 @@ func Encryption(val bool) StreamOption {
 	}
 }
 
+// MetadataOptions are used to control FetchMetadata behavior.
+type MetadataOptions struct {
+	// ConsumerGroups determines the consumer groups to fetch metadata for. If
+	// not set, no consumer group metadata will be fetched.
+	ConsumerGroups []string
+
+	// Streams determines the streams to fetch metadata for. If not set,
+	// metadata for all streams will be fetched.
+	Streams []string
+
+	// replaceCache determines if the metadata cache should be replaced with
+	// the fetched metadata.
+	replaceCache bool
+}
+
+// MetadataOption is a function on the MetadataOptions for FetchMetadata. These
+// are used to configure FetchMetadata requests.
+type MetadataOption func(*MetadataOptions) error
+
+// ConsumerGroups is a MetadataOption which sets the IDs of the consumer groups
+// to fetch metadata for. If this is not set, no consumer group metadata will
+// be fetched.
+func ConsumerGroups(groupIDs []string) MetadataOption {
+	return func(o *MetadataOptions) error {
+		o.ConsumerGroups = groupIDs
+		return nil
+	}
+}
+
+// Streams is a MetadataOption which sets the names of the streams to fetch
+// metadata for. If this is not set, metadata will be fetched for all streams.
+func Streams(names []string) MetadataOption {
+	return func(o *MetadataOptions) error {
+		o.Streams = names
+		return nil
+	}
+}
+
+// replaceCache determines if the metadata cache should be replaced with the
+// fetched metadata.
+func replaceCache() MetadataOption {
+	return func(o *MetadataOptions) error {
+		o.replaceCache = true
+		return nil
+	}
+}
+
 // Client is the main API used to communicate with a Liftbridge cluster. Call
 // Connect to get a Client instance.
 type Client interface {
@@ -513,7 +560,7 @@ type Client interface {
 
 	// FetchMetadata returns cluster metadata including broker and stream
 	// information.
-	FetchMetadata(ctx context.Context) (*Metadata, error)
+	FetchMetadata(ctx context.Context, opts ...MetadataOption) (*Metadata, error)
 
 	// SetCursor persists a cursor position for a particular stream partition.
 	// This can be used to checkpoint a consumer's position in a stream to
@@ -1393,8 +1440,17 @@ func (c *client) PublishToSubject(ctx context.Context, subject string, value []b
 
 // FetchMetadata returns cluster metadata including broker and stream
 // information.
-func (c *client) FetchMetadata(ctx context.Context) (*Metadata, error) {
-	return c.metadata.update(ctx)
+func (c *client) FetchMetadata(ctx context.Context, options ...MetadataOption) (
+	*Metadata, error) {
+
+	opts := new(MetadataOptions)
+	for _, opt := range options {
+		if err := opt(opts); err != nil {
+			return nil, err
+		}
+	}
+
+	return c.metadata.update(ctx, opts.Streams, opts.ConsumerGroups, opts.replaceCache)
 }
 
 // FetchPartitionMetadata returns the metadata of the partition. This is sent to
@@ -1812,11 +1868,12 @@ func (c *client) getAPIClient(addr string) (proto.APIClient, error) {
 }
 
 func (c *client) updateMetadata(ctx context.Context) (*Metadata, error) {
+	// TODO: remove this and have FetchMetadata update brokers?
 	var (
 		metadata *Metadata
 		err      error
 	)
-	if metadata, err = c.metadata.update(ctx); err != nil {
+	if metadata, err = c.metadata.update(ctx, nil, nil, true); err != nil {
 		return nil, err
 	}
 	if err = c.brokers.Update(ctx, c.metadata.getAddrs()); err != nil {

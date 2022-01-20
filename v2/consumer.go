@@ -15,10 +15,24 @@ import (
 	proto "github.com/liftbridge-io/liftbridge-api/go"
 )
 
+// ConsumerError is an error that occurs asynchronously on a consumer.
+type ConsumerError struct {
+	wrappedErr error
+}
+
+// Error returns the error string.
+func (c *ConsumerError) Error() string {
+	return fmt.Sprintf("ConsumerError: %s", c.wrappedErr.Error())
+}
+
+func newConsumerError(err error) error {
+	return &ConsumerError{wrappedErr: err}
+}
+
 const defaultAutoCheckpointInterval = 5 * time.Second
 
 func defaultFetchAssignmentsInterval(timeout time.Duration) time.Duration {
-	return time.Duration(0.7 * float64(timeout))
+	return time.Duration(0.4 * float64(timeout))
 }
 
 // AutoOffset determines behavior for where a consumer should start consuming a
@@ -68,7 +82,7 @@ type ConsumerOptions struct {
 	// Increasing this too much may cause the group coordinator to think the
 	// consumer has failed and remove it from the group. The function argument
 	// is the timeout duration configured on the server. If not set, this will
-	// default to 0.7 * timeout.
+	// default to 0.4 * timeout.
 	FetchAssignmentsInterval func(timeout time.Duration) time.Duration
 }
 
@@ -215,26 +229,21 @@ func (c *Consumer) Subscribe(ctx context.Context, streams []string, handler Hand
 		return err
 	}
 
-	interval := c.opts.FetchAssignmentsInterval(time.Duration(resp.ConsumersTimeout))
+	var (
+		interval = c.opts.FetchAssignmentsInterval(
+			time.Duration(resp.ConsumerTimeout))
+		coordinatorTimeout = time.Duration(resp.CoordinatorTimeout)
+	)
+	c.ctx, c.cancelCtx = context.WithCancel(ctx)
 
-	var client proto.APIClient
-	for i := 0; i < 5; i++ {
-		client, err = c.client.getAPIClientForBroker(resp.Coordinator)
-		if err != nil {
-			sleepContext(ctx, 50*time.Millisecond)
-			c.client.updateMetadata(ctx)
-			continue
-		}
-		c.ctx, c.cancelCtx = context.WithCancel(ctx)
-		c.startGoroutine(func() {
-			c.consumerLoop(c.ctx, client, interval, resp.Epoch, c.wrapHandler(handler))
-		})
-		if c.opts.AutoCheckpointInterval > 0 {
-			c.startGoroutine(func() { c.checkpointLoop(c.ctx) })
-		}
-		return nil
+	c.startGoroutine(func() {
+		c.consumerLoop(c.ctx, resp.Coordinator, interval, coordinatorTimeout,
+			resp.Epoch, c.wrapHandler(handler))
+	})
+	if c.opts.AutoCheckpointInterval > 0 {
+		c.startGoroutine(func() { c.checkpointLoop(c.ctx) })
 	}
-	return err
+	return nil
 }
 
 type cursor struct {
@@ -325,31 +334,32 @@ func (c *Consumer) checkpointLoop(ctx context.Context) {
 	}
 }
 
-func (c *Consumer) consumerLoop(ctx context.Context, client proto.APIClient,
-	interval time.Duration, epoch uint64, handler Handler) {
+func (c *Consumer) consumerLoop(ctx context.Context, coordinator string,
+	interval, timeout time.Duration, epoch uint64, handler Handler) {
 
+	lastContact := time.Now()
 	for {
-		req := &proto.FetchConsumerGroupAssignmentsRequest{
-			GroupId:    c.groupID,
-			ConsumerId: c.opts.ConsumerID,
-			Epoch:      epoch,
+		client, err := c.getAPIClientForCoordinator(ctx, coordinator)
+		if err != nil {
+			coordinator, epoch = c.checkCoordinator(ctx, lastContact, timeout,
+				coordinator, epoch)
+			sleepContext(ctx, 2*time.Second)
+			continue
 		}
-		var (
-			resp *proto.FetchConsumerGroupAssignmentsResponse
-			err  error
+		resp, err := client.FetchConsumerGroupAssignments(ctx,
+			&proto.FetchConsumerGroupAssignmentsRequest{
+				GroupId:    c.groupID,
+				ConsumerId: c.opts.ConsumerID,
+				Epoch:      epoch,
+			},
 		)
-		for i := 0; i < 5; i++ {
-			resp, err = client.FetchConsumerGroupAssignments(ctx, req)
-			if err != nil {
-				sleepContext(ctx, 50*time.Millisecond)
-				continue
-			}
-			break
+		if err != nil {
+			coordinator, epoch = c.checkCoordinator(ctx, lastContact, timeout,
+				coordinator, epoch)
+			sleepContext(ctx, 2*time.Second)
+			continue
 		}
-		if resp == nil {
-			// TODO: handle this - also need to handle coordinator failovers
-			panic(err)
-		}
+		lastContact = time.Now()
 
 		c.reconcileSubscriptions(ctx, resp.Assignments, resp.Epoch, handler)
 
@@ -362,8 +372,68 @@ func (c *Consumer) consumerLoop(ctx context.Context, client proto.APIClient,
 	}
 }
 
-func (c *Consumer) reconcileSubscriptions(ctx context.Context, assignments []*proto.PartitionAssignment,
-	epoch uint64, handler Handler) {
+func (c *Consumer) checkCoordinator(ctx context.Context, lastContact time.Time,
+	timeout time.Duration, coordinator string, epoch uint64) (string, uint64) {
+
+	// Check if coordinator has changed.
+	newCoordinator, newEpoch, err := c.getUpdatedCoordinator(ctx)
+	if err == nil && (newCoordinator != coordinator || newEpoch != epoch) {
+		// Coordinator/epoch has changed.
+		return newCoordinator, newEpoch
+	}
+
+	if t := time.Since(lastContact); t > timeout {
+		// If the consumer has not reached the coordinator in the coordinator
+		// timeout, report the coordinator as failed.
+		_ = c.client.doResilientRPC(ctx, func(client proto.APIClient) error {
+			_, err := client.ReportConsumerGroupCoordinator(ctx,
+				&proto.ReportConsumerGroupCoordinatorRequest{
+					GroupId:     c.groupID,
+					ConsumerId:  c.opts.ConsumerID,
+					Coordinator: coordinator,
+					Epoch:       epoch,
+				},
+			)
+			return err
+		})
+	}
+
+	return coordinator, epoch
+}
+
+func (c *Consumer) getUpdatedCoordinator(ctx context.Context) (string, uint64, error) {
+	metadata, err := c.client.FetchMetadata(ctx, ConsumerGroups([]string{c.groupID}))
+	if err != nil {
+		return "", 0, err
+	}
+	groupInfo := metadata.GetConsumerGroup(c.groupID)
+	if groupInfo == nil {
+		return "", 0, errors.New("no group metadata")
+	}
+	return groupInfo.Coordinator(), groupInfo.Epoch(), nil
+}
+
+func (c *Consumer) getAPIClientForCoordinator(ctx context.Context, coordinator string) (
+	proto.APIClient, error) {
+
+	var (
+		client proto.APIClient
+		err    error
+	)
+	for i := 0; i < 5; i++ {
+		client, err = c.client.getAPIClientForBroker(coordinator)
+		if err != nil {
+			sleepContext(ctx, 50*time.Millisecond)
+			c.client.updateMetadata(ctx)
+			continue
+		}
+		break
+	}
+	return client, err
+}
+
+func (c *Consumer) reconcileSubscriptions(ctx context.Context,
+	assignments []*proto.PartitionAssignment, epoch uint64, handler Handler) {
 
 	assignmentsMap := make(map[string]map[int32]struct{}, len(assignments))
 	for _, assignment := range assignments {
@@ -402,8 +472,7 @@ func (c *Consumer) reconcileSubscriptions(ctx context.Context, assignments []*pr
 			// Otherwise set up a new subscription.
 			cancel, err := c.subscribeToPartition(ctx, stream, partition, epoch, handler)
 			if err != nil {
-				// TODO: should we wrap this error?
-				c.startGoroutine(func() { handler(nil, err) })
+				c.startGoroutine(func() { handler(nil, newConsumerError(err)) })
 				continue
 			}
 			c.subscriptions.Store(key, &subscription{
