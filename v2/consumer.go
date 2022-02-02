@@ -241,7 +241,7 @@ func (c *Consumer) Subscribe(ctx context.Context, streams []string, handler Hand
 			resp.Epoch, c.wrapHandler(handler))
 	})
 	if c.opts.AutoCheckpointInterval > 0 {
-		c.startGoroutine(func() { c.checkpointLoop(c.ctx) })
+		c.startGoroutine(func() { c.checkpointLoop() })
 	}
 	return nil
 }
@@ -265,6 +265,10 @@ func (c *Consumer) Checkpoint(ctx context.Context) error {
 	}
 	c.mu.RUnlock()
 
+	return c.checkpoint(ctx)
+}
+
+func (c *Consumer) checkpoint(ctx context.Context) error {
 	cursors := make(map[string]map[int32]cursor)
 	c.subscriptions.Range(func(key, value interface{}) bool {
 		var (
@@ -310,26 +314,42 @@ func (c *Consumer) Close() error {
 	default:
 	}
 
+	ctx := context.Background()
+	err := c.client.doResilientRPC(ctx, func(client proto.APIClient) error {
+		_, err := client.LeaveConsumerGroup(ctx,
+			&proto.LeaveConsumerGroupRequest{
+				GroupId:    c.groupID,
+				ConsumerId: c.opts.ConsumerID,
+			},
+		)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+
 	if c.ctx != nil {
 		c.cancelCtx()
 		c.ctx = nil
 	}
-
-	// TODO make RPC to leave group
 
 	close(c.closed)
 	c.wg.Wait()
 	return nil
 }
 
-func (c *Consumer) checkpointLoop(ctx context.Context) {
+func (c *Consumer) checkpointLoop() {
+	closed := false
 	for {
 		select {
 		case <-c.closed:
-			return
+			closed = true
 		case <-time.After(c.opts.AutoCheckpointInterval):
-			// I'm not sure if there's much we can do with the error?
-			_ = c.Checkpoint(ctx)
+		}
+		// I'm not sure if there's much we can do with the error?
+		_ = c.checkpoint(context.Background())
+		if closed {
+			return
 		}
 	}
 }
