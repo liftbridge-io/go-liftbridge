@@ -157,6 +157,7 @@ func FetchAssignmentsInterval(f func(time.Duration) time.Duration) ConsumerOptio
 }
 
 type subscription struct {
+	epoch               uint64
 	offset              int64
 	lastCommittedOffset int64
 	ctxCancel           context.CancelFunc
@@ -490,7 +491,12 @@ func (c *Consumer) reconcileSubscriptions(ctx context.Context,
 		if !ok {
 			subscription.cancel()
 			c.subscriptions.Delete(key)
-		} else if _, ok := streamAssignments[partition]; !ok {
+		} else if _, ok := streamAssignments[partition]; !ok || subscription.epoch != epoch {
+			// Also cancel subscription even if consumer is currently assigned
+			// if the epoch changed because it's possible the consumer lost the
+			// assignment and was then reassigned since the previous reconcile.
+			// The server may have closed the subscription in this case, so we
+			// must resubscribe.
 			subscription.cancel()
 			c.subscriptions.Delete(key)
 		}
@@ -512,6 +518,7 @@ func (c *Consumer) reconcileSubscriptions(ctx context.Context,
 				continue
 			}
 			c.subscriptions.Store(key, &subscription{
+				epoch:               epoch,
 				offset:              -1,
 				lastCommittedOffset: -1,
 				ctxCancel:           cancel,
