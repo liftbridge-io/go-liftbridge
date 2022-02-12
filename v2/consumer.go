@@ -140,6 +140,22 @@ func ConsumerID(id string) ConsumerOption {
 	}
 }
 
+// FetchAssignmentsInterval is a function which returns the frequency to fetch
+// partition assignments from the consumer group coordinator. This also acts as
+// a health check to keep the consumer active in the group. Increasing this too
+// much may cause the group coordinator to think the consumer has failed and
+// remove it from the group. The function argument is the timeout duration
+// configured on the server. If not set, this will default to 0.4 * timeout.
+func FetchAssignmentsInterval(f func(time.Duration) time.Duration) ConsumerOption {
+	return func(o *ConsumerOptions) error {
+		if f == nil {
+			return errors.New("FetchAssignmentsInterval function cannot be nil")
+		}
+		o.FetchAssignmentsInterval = f
+		return nil
+	}
+}
+
 type subscription struct {
 	offset              int64
 	lastCommittedOffset int64
