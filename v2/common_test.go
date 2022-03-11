@@ -2,6 +2,7 @@ package liftbridge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -107,33 +108,39 @@ func (m *mockServer) Stop(t require.TestingT) {
 }
 
 type mockAPI struct {
-	mu                             sync.Mutex
-	createStreamRequests           []*proto.CreateStreamRequest
-	deleteStreamRequests           []*proto.DeleteStreamRequest
-	pauseStreamRequests            []*proto.PauseStreamRequest
-	setStreamReadonlyRequests      []*proto.SetStreamReadonlyRequest
-	subscribeRequests              []*proto.SubscribeRequest
-	fetchMetadataRequests          []*proto.FetchMetadataRequest
-	fetchPartitionMetadataRequests []*proto.FetchPartitionMetadataRequest
-	publishAsyncRequests           []*proto.PublishRequest
-	publishToSubjectRequests       []*proto.PublishToSubjectRequest
-	setCursorRequests              []*proto.SetCursorRequest
-	fetchCursorRequests            []*proto.FetchCursorRequest
-	responses                      map[string]interface{}
-	messages                       []*proto.Message
-	createStreamErr                error
-	deleteStreamErr                error
-	pauseStreamErr                 error
-	setStreamReadonlyErr           error
-	subscribeErr                   error
-	subscribeAsyncErr              error
-	fetchMetadataErr               error
-	publishErr                     error
-	publishAsyncErr                error
-	publishToSubjectErr            error
-	setCursorErr                   error
-	fetchCursorErr                 error
-	fetchPartitionMetadataErr      error
+	mu                                    sync.Mutex
+	createStreamRequests                  []*proto.CreateStreamRequest
+	deleteStreamRequests                  []*proto.DeleteStreamRequest
+	pauseStreamRequests                   []*proto.PauseStreamRequest
+	setStreamReadonlyRequests             []*proto.SetStreamReadonlyRequest
+	subscribeRequests                     []*proto.SubscribeRequest
+	fetchMetadataRequests                 []*proto.FetchMetadataRequest
+	fetchPartitionMetadataRequests        []*proto.FetchPartitionMetadataRequest
+	publishAsyncRequests                  []*proto.PublishRequest
+	publishToSubjectRequests              []*proto.PublishToSubjectRequest
+	setCursorRequests                     []*proto.SetCursorRequest
+	fetchCursorRequests                   []*proto.FetchCursorRequest
+	joinConsumerGroupRequests             []*proto.JoinConsumerGroupRequest
+	leaveConsumerGroupRequests            []*proto.LeaveConsumerGroupRequest
+	fetchConsumerGroupAssignmentsRequests []*proto.FetchConsumerGroupAssignmentsRequest
+	responses                             map[string]interface{}
+	messages                              []*proto.Message
+	createStreamErr                       error
+	deleteStreamErr                       error
+	pauseStreamErr                        error
+	setStreamReadonlyErr                  error
+	subscribeErr                          error
+	subscribeAsyncErr                     error
+	fetchMetadataErr                      error
+	publishErr                            error
+	publishAsyncErr                       error
+	publishToSubjectErr                   error
+	setCursorErr                          error
+	fetchCursorErr                        error
+	joinConsumerGroupErr                  error
+	leaveConsumerGroupErr                 error
+	fetchConsumerGroupAssignmentsErr      error
+	fetchPartitionMetadataErr             error
 	// autclearError indicates where the mock API shall clear mock error automatically
 	autoClearError bool
 	// delayMetadataResponse indicates the FetchMetadata call shall be delayed for few seconds
@@ -143,19 +150,22 @@ type mockAPI struct {
 
 func newMockAPI() *mockAPI {
 	return &mockAPI{
-		createStreamRequests:           []*proto.CreateStreamRequest{},
-		deleteStreamRequests:           []*proto.DeleteStreamRequest{},
-		pauseStreamRequests:            []*proto.PauseStreamRequest{},
-		setStreamReadonlyRequests:      []*proto.SetStreamReadonlyRequest{},
-		subscribeRequests:              []*proto.SubscribeRequest{},
-		fetchMetadataRequests:          []*proto.FetchMetadataRequest{},
-		fetchPartitionMetadataRequests: []*proto.FetchPartitionMetadataRequest{},
-		publishAsyncRequests:           []*proto.PublishRequest{},
-		publishToSubjectRequests:       []*proto.PublishToSubjectRequest{},
-		setCursorRequests:              []*proto.SetCursorRequest{},
-		fetchCursorRequests:            []*proto.FetchCursorRequest{},
-		responses:                      make(map[string]interface{}),
-		autoClearError:                 false,
+		createStreamRequests:                  []*proto.CreateStreamRequest{},
+		deleteStreamRequests:                  []*proto.DeleteStreamRequest{},
+		pauseStreamRequests:                   []*proto.PauseStreamRequest{},
+		setStreamReadonlyRequests:             []*proto.SetStreamReadonlyRequest{},
+		subscribeRequests:                     []*proto.SubscribeRequest{},
+		fetchMetadataRequests:                 []*proto.FetchMetadataRequest{},
+		fetchPartitionMetadataRequests:        []*proto.FetchPartitionMetadataRequest{},
+		publishAsyncRequests:                  []*proto.PublishRequest{},
+		publishToSubjectRequests:              []*proto.PublishToSubjectRequest{},
+		setCursorRequests:                     []*proto.SetCursorRequest{},
+		fetchCursorRequests:                   []*proto.FetchCursorRequest{},
+		joinConsumerGroupRequests:             []*proto.JoinConsumerGroupRequest{},
+		leaveConsumerGroupRequests:            []*proto.LeaveConsumerGroupRequest{},
+		fetchConsumerGroupAssignmentsRequests: []*proto.FetchConsumerGroupAssignmentsRequest{},
+		responses:                             make(map[string]interface{}),
+		autoClearError:                        false,
 	}
 }
 
@@ -214,6 +224,22 @@ func (m *mockAPI) SetupMockSetCursorResponse(responses interface{}) {
 
 func (m *mockAPI) SetupMockFetchCursorRequestsResponse(responses interface{}) {
 	m.responses["FetchCursor"] = responses
+}
+
+func (m *mockAPI) SetupMockJoinConsumerGroupResponse(responses interface{}) {
+	m.responses["JoinConsumerGroup"] = responses
+}
+
+func (m *mockAPI) SetupMockLeaveConsumerGroupResponse(responses interface{}) {
+	m.responses["LeaveConsumerGroup"] = responses
+}
+
+func (m *mockAPI) SetupMockFetchConsumerGroupAssignmentsResponse(responses interface{}) {
+	m.responses["FetchConsumerGroupAssignments"] = responses
+}
+
+func (m *mockAPI) SetupMockReportConsumerGroupCoordinatorResponse(responses interface{}) {
+	m.responses["ReportConsumerGroupCoordinator"] = responses
 }
 
 func (m *mockAPI) SetupMockCreateStreamError(err error) {
@@ -357,6 +383,18 @@ func (m *mockAPI) GetFetchMetadataRequests() []*proto.FetchMetadataRequest {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.fetchMetadataRequests
+}
+
+func (m *mockAPI) GetJoinConsumerGroupRequests() []*proto.JoinConsumerGroupRequest {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.joinConsumerGroupRequests
+}
+
+func (m *mockAPI) GetLeaveConsumerGroupRequests() []*proto.LeaveConsumerGroupRequest {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.leaveConsumerGroupRequests
 }
 
 func (m *mockAPI) CreateStream(ctx context.Context, in *proto.CreateStreamRequest) (*proto.CreateStreamResponse, error) {
@@ -570,4 +608,61 @@ func (m *mockAPI) FetchCursor(ctx context.Context, in *proto.FetchCursorRequest)
 	}
 	resp := m.responses["FetchCursor"]
 	return resp.(*proto.FetchCursorResponse), nil
+}
+
+func (m *mockAPI) JoinConsumerGroup(ctx context.Context, in *proto.JoinConsumerGroupRequest) (
+	*proto.JoinConsumerGroupResponse, error) {
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.joinConsumerGroupRequests = append(m.joinConsumerGroupRequests, in)
+	if m.joinConsumerGroupErr != nil {
+		err := m.joinConsumerGroupErr
+		if m.autoClearError {
+			m.joinConsumerGroupErr = nil
+		}
+		return nil, err
+	}
+	resp := m.responses["JoinConsumerGroup"]
+	return resp.(*proto.JoinConsumerGroupResponse), nil
+}
+
+func (m *mockAPI) LeaveConsumerGroup(ctx context.Context, in *proto.LeaveConsumerGroupRequest) (
+	*proto.LeaveConsumerGroupResponse, error) {
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.leaveConsumerGroupRequests = append(m.leaveConsumerGroupRequests, in)
+	if m.leaveConsumerGroupErr != nil {
+		err := m.leaveConsumerGroupErr
+		if m.autoClearError {
+			m.leaveConsumerGroupErr = nil
+		}
+		return nil, err
+	}
+	resp := m.responses["LeaveConsumerGroup"]
+	return resp.(*proto.LeaveConsumerGroupResponse), nil
+}
+
+func (m *mockAPI) FetchConsumerGroupAssignments(ctx context.Context,
+	in *proto.FetchConsumerGroupAssignmentsRequest) (*proto.FetchConsumerGroupAssignmentsResponse, error) {
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.fetchConsumerGroupAssignmentsRequests = append(m.fetchConsumerGroupAssignmentsRequests, in)
+	if m.fetchConsumerGroupAssignmentsErr != nil {
+		err := m.fetchConsumerGroupAssignmentsErr
+		if m.autoClearError {
+			m.fetchConsumerGroupAssignmentsErr = nil
+		}
+		return nil, err
+	}
+	resp := m.responses["FetchConsumerGroupAssignments"]
+	return resp.(*proto.FetchConsumerGroupAssignmentsResponse), nil
+}
+
+func (m *mockAPI) ReportConsumerGroupCoordinator(ctx context.Context,
+	in *proto.ReportConsumerGroupCoordinatorRequest) (*proto.ReportConsumerGroupCoordinatorResponse, error) {
+
+	return nil, errors.New("todo")
 }
