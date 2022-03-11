@@ -239,7 +239,7 @@ func TestSubscribe(t *testing.T) {
 			Host: "localhost",
 			Port: int32(port),
 		}},
-		Metadata: []*proto.StreamMetadata{{
+		StreamMetadata: []*proto.StreamMetadata{{
 			Name:    "foo",
 			Subject: "foo",
 			Partitions: map[int32]*proto.PartitionMetadata{
@@ -314,7 +314,7 @@ func TestSubscribeNoKnownPartition(t *testing.T) {
 			Host: "localhost",
 			Port: int32(port),
 		}},
-		Metadata: []*proto.StreamMetadata{{
+		StreamMetadata: []*proto.StreamMetadata{{
 			Name:    "foo",
 			Subject: "foo",
 			Partitions: map[int32]*proto.PartitionMetadata{
@@ -353,7 +353,7 @@ func TestSubscribeNoPartition(t *testing.T) {
 			Host: "localhost",
 			Port: int32(port),
 		}},
-		Metadata: []*proto.StreamMetadata{{
+		StreamMetadata: []*proto.StreamMetadata{{
 			Name:    "foo",
 			Subject: "foo",
 			Partitions: map[int32]*proto.PartitionMetadata{
@@ -398,7 +398,7 @@ func TestSubscribeNoKnownStream(t *testing.T) {
 			Host: "localhost",
 			Port: int32(port),
 		}},
-		Metadata: []*proto.StreamMetadata{},
+		StreamMetadata: []*proto.StreamMetadata{},
 	}
 	server.SetupMockFetchMetadataResponse(metadataResp)
 
@@ -426,7 +426,7 @@ func TestSubscribeNoLeader(t *testing.T) {
 			Host: "localhost",
 			Port: int32(port),
 		}},
-		Metadata: []*proto.StreamMetadata{{
+		StreamMetadata: []*proto.StreamMetadata{{
 			Name:    "foo",
 			Subject: "foo",
 			Partitions: map[int32]*proto.PartitionMetadata{
@@ -465,7 +465,7 @@ func TestSubscribeNotLeaderRetry(t *testing.T) {
 			Host: "localhost",
 			Port: int32(port),
 		}},
-		Metadata: []*proto.StreamMetadata{{
+		StreamMetadata: []*proto.StreamMetadata{{
 			Name:    "foo",
 			Subject: "foo",
 			Partitions: map[int32]*proto.PartitionMetadata{
@@ -545,7 +545,7 @@ func TestSubscribeResubscribe(t *testing.T) {
 			Host: "localhost",
 			Port: int32(port),
 		}},
-		Metadata: []*proto.StreamMetadata{{
+		StreamMetadata: []*proto.StreamMetadata{{
 			Name:    "foo",
 			Subject: "foo",
 			Partitions: map[int32]*proto.PartitionMetadata{
@@ -616,7 +616,7 @@ func TestSubscribeStreamDeleted(t *testing.T) {
 			Host: "localhost",
 			Port: int32(port),
 		}},
-		Metadata: []*proto.StreamMetadata{{
+		StreamMetadata: []*proto.StreamMetadata{{
 			Name:    "foo",
 			Subject: "foo",
 			Partitions: map[int32]*proto.PartitionMetadata{
@@ -670,7 +670,7 @@ func TestSubscribePartitionPaused(t *testing.T) {
 			Host: "localhost",
 			Port: int32(port),
 		}},
-		Metadata: []*proto.StreamMetadata{{
+		StreamMetadata: []*proto.StreamMetadata{{
 			Name:    "foo",
 			Subject: "foo",
 			Partitions: map[int32]*proto.PartitionMetadata{
@@ -724,7 +724,7 @@ func TestSubscribeServerUnavailableRetry(t *testing.T) {
 			Host: "localhost",
 			Port: int32(port),
 		}},
-		Metadata: []*proto.StreamMetadata{{
+		StreamMetadata: []*proto.StreamMetadata{{
 			Name:    "foo",
 			Subject: "foo",
 			Partitions: map[int32]*proto.PartitionMetadata{
@@ -1209,7 +1209,7 @@ func TestPublishRoundRobin(t *testing.T) {
 			Host: "localhost",
 			Port: int32(port),
 		}},
-		Metadata: []*proto.StreamMetadata{{
+		StreamMetadata: []*proto.StreamMetadata{{
 			Name:    "foo",
 			Subject: "foo",
 			Partitions: map[int32]*proto.PartitionMetadata{
@@ -1334,7 +1334,7 @@ func TestFetchMetadata(t *testing.T) {
 			LeaderCount:    1,
 			PartitionCount: 1,
 		}},
-		Metadata: []*proto.StreamMetadata{{
+		StreamMetadata: []*proto.StreamMetadata{{
 			Name:    "foo",
 			Subject: "foo-subject",
 			Partitions: map[int32]*proto.PartitionMetadata{
@@ -1390,7 +1390,7 @@ func TestSubscribeDisconnectError(t *testing.T) {
 			Host: "localhost",
 			Port: int32(port),
 		}},
-		Metadata: []*proto.StreamMetadata{{
+		StreamMetadata: []*proto.StreamMetadata{{
 			Name:    "foo",
 			Subject: "foo",
 			Partitions: map[int32]*proto.PartitionMetadata{
@@ -1434,7 +1434,7 @@ func TestResubscribeFail(t *testing.T) {
 			Host: "localhost",
 			Port: int32(port),
 		}},
-		Metadata: []*proto.StreamMetadata{{
+		StreamMetadata: []*proto.StreamMetadata{{
 			Name:    "foo",
 			Subject: "foo",
 			Partitions: map[int32]*proto.PartitionMetadata{
@@ -1552,7 +1552,7 @@ func TestSetCursor(t *testing.T) {
 			Host: "localhost",
 			Port: int32(port),
 		}},
-		Metadata: []*proto.StreamMetadata{{
+		StreamMetadata: []*proto.StreamMetadata{{
 			Name:    "__cursors",
 			Subject: "__cursors",
 			Partitions: map[int32]*proto.PartitionMetadata{
@@ -1597,7 +1597,7 @@ func TestSetCursorNotLeader(t *testing.T) {
 			Host: "localhost",
 			Port: int32(port),
 		}},
-		Metadata: []*proto.StreamMetadata{{
+		StreamMetadata: []*proto.StreamMetadata{{
 			Name:    "__cursors",
 			Subject: "__cursors",
 			Partitions: map[int32]*proto.PartitionMetadata{
@@ -1635,7 +1635,7 @@ func TestFetchCursor(t *testing.T) {
 			Host: "localhost",
 			Port: int32(port),
 		}},
-		Metadata: []*proto.StreamMetadata{{
+		StreamMetadata: []*proto.StreamMetadata{{
 			Name:    "__cursors",
 			Subject: "__cursors",
 			Partitions: map[int32]*proto.PartitionMetadata{
@@ -1682,7 +1682,7 @@ func TestFetchCursorNotLeader(t *testing.T) {
 			Host: "localhost",
 			Port: int32(port),
 		}},
-		Metadata: []*proto.StreamMetadata{{
+		StreamMetadata: []*proto.StreamMetadata{{
 			Name:    "__cursors",
 			Subject: "__cursors",
 			Partitions: map[int32]*proto.PartitionMetadata{
@@ -1713,7 +1713,7 @@ func TestFetchPartitionMetadata(t *testing.T) {
 			Host: "localhost",
 			Port: int32(port),
 		}},
-		Metadata: []*proto.StreamMetadata{{
+		StreamMetadata: []*proto.StreamMetadata{{
 			Name:    "foo",
 			Subject: "foo",
 			Partitions: map[int32]*proto.PartitionMetadata{
@@ -1796,7 +1796,7 @@ func TestFetchPartitionMetadataNotLeader(t *testing.T) {
 			Host: "localhost",
 			Port: int32(port),
 		}},
-		Metadata: []*proto.StreamMetadata{{
+		StreamMetadata: []*proto.StreamMetadata{{
 			Name:    "foo",
 			Subject: "foo",
 			Partitions: map[int32]*proto.PartitionMetadata{

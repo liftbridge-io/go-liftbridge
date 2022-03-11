@@ -176,6 +176,28 @@ func (b *BrokerInfo) PartitionCount() int32 {
 	return b.partitionCount
 }
 
+// ConsumerGroupInfo contains information for a consumer group.
+type ConsumerGroupInfo struct {
+	id          string
+	coordinator string
+	epoch       uint64
+}
+
+// ID of the consumer group.
+func (c *ConsumerGroupInfo) ID() string {
+	return c.id
+}
+
+// Coordinator of the consumer group.
+func (c *ConsumerGroupInfo) Coordinator() string {
+	return c.coordinator
+}
+
+// Epoch of the consumer group.
+func (c *ConsumerGroupInfo) Epoch() uint64 {
+	return c.epoch
+}
+
 // Metadata contains an immutable snapshot of information for a cluster and
 // subset of streams.
 type Metadata struct {
@@ -183,9 +205,12 @@ type Metadata struct {
 	brokers     map[string]*BrokerInfo
 	addrs       map[string]struct{}
 	streams     map[string]*StreamInfo
+	groups      map[string]*ConsumerGroupInfo
 }
 
-func newMetadata(brokers map[string]*BrokerInfo, streams map[string]*StreamInfo) *Metadata {
+func newMetadata(brokers map[string]*BrokerInfo, streams map[string]*StreamInfo,
+	groups map[string]*ConsumerGroupInfo) *Metadata {
+
 	addrs := make(map[string]struct{}, len(brokers))
 	for _, broker := range brokers {
 		addrs[broker.Addr()] = struct{}{}
@@ -195,6 +220,7 @@ func newMetadata(brokers map[string]*BrokerInfo, streams map[string]*StreamInfo)
 		brokers:     brokers,
 		addrs:       addrs,
 		streams:     streams,
+		groups:      groups,
 	}
 }
 
@@ -211,6 +237,11 @@ func (m *Metadata) Brokers() []*BrokerInfo {
 		brokers = append(brokers, broker)
 	}
 	return brokers
+}
+
+// Broker returns the broker for the given id or nil if it doesn't exist.
+func (m *Metadata) Broker(id string) *BrokerInfo {
+	return m.brokers[id]
 }
 
 // Addrs returns the list of known broker addresses.
@@ -246,6 +277,12 @@ func (m *Metadata) PartitionCountForStream(stream string) int32 {
 	return int32(len(info.partitions))
 }
 
+// GetConsumerGroup returns the consumer group for the given id or nil if it
+// doesn't exist.
+func (m *Metadata) GetConsumerGroup(id string) *ConsumerGroupInfo {
+	return m.groups[id]
+}
+
 // hasStreamMetadata indicates if the Metadata has info for the given stream.
 func (m *Metadata) hasStreamMetadata(stream string) bool {
 	return m.GetStream(stream) != nil
@@ -268,10 +305,15 @@ func newMetadataCache(addrs []string, doRPC func(context.Context, func(proto.API
 
 // update fetches the latest cluster metadata, including stream and broker
 // information.
-func (m *metadataCache) update(ctx context.Context) (*Metadata, error) {
+func (m *metadataCache) update(ctx context.Context, streamNames, groupNames []string,
+	replaceCache bool) (*Metadata, error) {
+
 	var resp *proto.FetchMetadataResponse
 	if err := m.doRPC(ctx, func(client proto.APIClient) (err error) {
-		resp, err = client.FetchMetadata(ctx, &proto.FetchMetadataRequest{})
+		resp, err = client.FetchMetadata(ctx, &proto.FetchMetadataRequest{
+			Streams: streamNames,
+			Groups:  groupNames,
+		})
 		return err
 	}); err != nil {
 		return nil, err
@@ -289,7 +331,7 @@ func (m *metadataCache) update(ctx context.Context) (*Metadata, error) {
 	}
 
 	streams := make(map[string]*StreamInfo)
-	for _, streamMetadata := range resp.Metadata {
+	for _, streamMetadata := range resp.StreamMetadata {
 		stream := &StreamInfo{
 			subject:      streamMetadata.Subject,
 			name:         streamMetadata.Name,
@@ -322,11 +364,22 @@ func (m *metadataCache) update(ctx context.Context) (*Metadata, error) {
 		streams[stream.name] = stream
 	}
 
-	metadata := newMetadata(brokers, streams)
+	groups := make(map[string]*ConsumerGroupInfo, len(resp.GroupMetadata))
+	for _, group := range resp.GroupMetadata {
+		groups[group.GroupId] = &ConsumerGroupInfo{
+			id:          group.GroupId,
+			coordinator: group.Coordinator,
+			epoch:       group.Epoch,
+		}
+	}
 
-	m.mu.Lock()
-	m.metadata = metadata
-	m.mu.Unlock()
+	metadata := newMetadata(brokers, streams, groups)
+
+	if replaceCache {
+		m.mu.Lock()
+		m.metadata = metadata
+		m.mu.Unlock()
+	}
 
 	return metadata, nil
 }
@@ -347,7 +400,7 @@ func (m *metadataCache) getAddrs() []string {
 }
 
 // getAddr returns the broker address for the given stream partition.
-func (m *metadataCache) getAddr(stream string, partitionID int32, readISRReplica bool) (string, error) {
+func (m *metadataCache) getAddrForPartition(stream string, partitionID int32, readISRReplica bool) (string, error) {
 	m.mu.RLock()
 	metadata := m.metadata
 	m.mu.RUnlock()
@@ -369,6 +422,18 @@ func (m *metadataCache) getAddr(stream string, partitionID int32, readISRReplica
 		return "", errors.New("no known leader for partition")
 	}
 	return partition.Leader().Addr(), nil
+}
+
+// getAddrForBroker returns the address for the given broker id.
+func (m *metadataCache) getAddrForBroker(id string) (string, error) {
+	m.mu.RLock()
+	metadata := m.metadata
+	m.mu.RUnlock()
+	broker := metadata.Broker(id)
+	if broker == nil {
+		return "", fmt.Errorf("no known broker for id %s", id)
+	}
+	return broker.Addr(), nil
 }
 
 // get returns the current Metadata.

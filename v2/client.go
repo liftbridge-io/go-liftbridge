@@ -436,6 +436,53 @@ func Encryption(val bool) StreamOption {
 	}
 }
 
+// MetadataOptions are used to control FetchMetadata behavior.
+type MetadataOptions struct {
+	// ConsumerGroups determines the consumer groups to fetch metadata for. If
+	// not set, no consumer group metadata will be fetched.
+	ConsumerGroups []string
+
+	// Streams determines the streams to fetch metadata for. If not set,
+	// metadata for all streams will be fetched.
+	Streams []string
+
+	// replaceCache determines if the metadata cache should be replaced with
+	// the fetched metadata.
+	replaceCache bool
+}
+
+// MetadataOption is a function on the MetadataOptions for FetchMetadata. These
+// are used to configure FetchMetadata requests.
+type MetadataOption func(*MetadataOptions) error
+
+// ConsumerGroups is a MetadataOption which sets the IDs of the consumer groups
+// to fetch metadata for. If this is not set, no consumer group metadata will
+// be fetched.
+func ConsumerGroups(groupIDs []string) MetadataOption {
+	return func(o *MetadataOptions) error {
+		o.ConsumerGroups = groupIDs
+		return nil
+	}
+}
+
+// Streams is a MetadataOption which sets the names of the streams to fetch
+// metadata for. If this is not set, metadata will be fetched for all streams.
+func Streams(names []string) MetadataOption {
+	return func(o *MetadataOptions) error {
+		o.Streams = names
+		return nil
+	}
+}
+
+// replaceCache determines if the metadata cache should be replaced with the
+// fetched metadata.
+func replaceCache() MetadataOption {
+	return func(o *MetadataOptions) error {
+		o.replaceCache = true
+		return nil
+	}
+}
+
 // Client is the main API used to communicate with a Liftbridge cluster. Call
 // Connect to get a Client instance.
 type Client interface {
@@ -513,7 +560,7 @@ type Client interface {
 
 	// FetchMetadata returns cluster metadata including broker and stream
 	// information.
-	FetchMetadata(ctx context.Context) (*Metadata, error)
+	FetchMetadata(ctx context.Context, opts ...MetadataOption) (*Metadata, error)
 
 	// SetCursor persists a cursor position for a particular stream partition.
 	// This can be used to checkpoint a consumer's position in a stream to
@@ -526,6 +573,11 @@ type Client interface {
 
 	// FetchPartitionMetadata retrieves the metadata of a particular partition
 	FetchPartitionMetadata(ctx context.Context, stream string, partition int32) (*PartitionInfo, error)
+
+	// CreateConsumer creates a consumer that is part of a consumer group which
+	// consumes a set of streams. Liftbridge handles assigning partitions to
+	// the group members and tracking the group's position in the streams.
+	CreateConsumer(groupID string, opts ...ConsumerOption) (*Consumer, error)
 }
 
 // client implements the Client interface. It maintains a pool of connections
@@ -1018,6 +1070,11 @@ type SubscriptionOptions struct {
 	// Resume controls if a paused partition can be resumed before
 	// subscription.
 	Resume bool
+
+	// Consumer group fields.
+	groupID    string
+	consumerID string
+	groupEpoch uint64
 }
 
 // SubscriptionOption is a function on the SubscriptionOptions for a
@@ -1050,6 +1107,15 @@ func StartAtTimeDelta(ago time.Duration) SubscriptionOption {
 	return func(o *SubscriptionOptions) error {
 		o.StartPosition = StartPosition(proto.StartPosition_TIMESTAMP)
 		o.StartTimestamp = time.Now().Add(-ago)
+		return nil
+	}
+}
+
+// StartAtNewOnly sets the subscription start position to receive only new
+// messages received in the stream.
+func StartAtNewOnly() SubscriptionOption {
+	return func(o *SubscriptionOptions) error {
+		o.StartPosition = StartPosition(proto.StartPosition_NEW_ONLY)
 		return nil
 	}
 }
@@ -1132,6 +1198,22 @@ func Partition(partition int32) SubscriptionOption {
 			return fmt.Errorf("invalid partition: %d", partition)
 		}
 		o.Partition = partition
+		return nil
+	}
+}
+
+// consumer specifies this subscribe request is for a consumer group member.
+func consumer(groupID, consumerID string, epoch uint64) SubscriptionOption {
+	return func(o *SubscriptionOptions) error {
+		if groupID == "" {
+			return errors.New("group id cannot be empty")
+		}
+		if consumerID == "" {
+			return errors.New("consumer id cannot be empty")
+		}
+		o.groupID = groupID
+		o.consumerID = consumerID
+		o.groupEpoch = epoch
 		return nil
 	}
 }
@@ -1358,8 +1440,17 @@ func (c *client) PublishToSubject(ctx context.Context, subject string, value []b
 
 // FetchMetadata returns cluster metadata including broker and stream
 // information.
-func (c *client) FetchMetadata(ctx context.Context) (*Metadata, error) {
-	return c.metadata.update(ctx)
+func (c *client) FetchMetadata(ctx context.Context, options ...MetadataOption) (
+	*Metadata, error) {
+
+	opts := new(MetadataOptions)
+	for _, opt := range options {
+		if err := opt(opts); err != nil {
+			return nil, err
+		}
+	}
+
+	return c.metadata.update(ctx, opts.Streams, opts.ConsumerGroups, opts.replaceCache)
 }
 
 // FetchPartitionMetadata returns the metadata of the partition. This is sent to
@@ -1432,6 +1523,13 @@ func (c *client) FetchPartitionMetadata(ctx context.Context, stream string, part
 		return nil, err
 	}
 	return partitionInfo, nil
+}
+
+// CreateConsumer creates a consumer that is part of a consumer group which
+// consumes a set of streams. Liftbridge handles assigning partitions to the
+// group members and tracking the group's position in the streams.
+func (c *client) CreateConsumer(groupID string, options ...ConsumerOption) (*Consumer, error) {
+	return c.newConsumer(groupID, options)
 }
 
 // SetCursor persists a cursor position for a particular stream partition.
@@ -1588,29 +1686,42 @@ func (c *client) waitForStreamMetadata(ctx context.Context, stream string) (*Met
 func (c *client) subscribe(ctx context.Context, stream string,
 	opts *SubscriptionOptions) (proto.API_SubscribeClient, error) {
 	var (
-		client proto.APIClient
-		st     proto.API_SubscribeClient
-		err    error
+		client   proto.APIClient
+		st       proto.API_SubscribeClient
+		err      error
+		consumer *proto.Consumer
 	)
+
+	if opts.groupID != "" {
+		consumer = &proto.Consumer{
+			GroupId:    opts.groupID,
+			GroupEpoch: opts.groupEpoch,
+			ConsumerId: opts.consumerID,
+		}
+	}
+
+	req := &proto.SubscribeRequest{
+		Stream:         stream,
+		StartPosition:  opts.StartPosition.toProto(),
+		StartOffset:    opts.StartOffset,
+		StartTimestamp: opts.StartTimestamp.UnixNano(),
+		StopPosition:   opts.StopPosition.toProto(),
+		StopOffset:     opts.StopOffset,
+		StopTimestamp:  opts.StopTimestamp.UnixNano(),
+		Partition:      opts.Partition,
+		ReadISRReplica: opts.ReadISRReplica,
+		Resume:         opts.Resume,
+		Consumer:       consumer,
+	}
+
 	for i := 0; i < 5; i++ {
-		client, err = c.getAPIClient(stream, opts.Partition, opts.ReadISRReplica)
+		client, err = c.getAPIClientForPartition(stream, opts.Partition, opts.ReadISRReplica)
 		if err != nil {
 			sleepContext(ctx, time.Duration(10+i*50)*time.Millisecond)
 			c.updateMetadata(ctx)
 			continue
 		}
-		req := &proto.SubscribeRequest{
-			Stream:         stream,
-			StartPosition:  opts.StartPosition.toProto(),
-			StartOffset:    opts.StartOffset,
-			StartTimestamp: opts.StartTimestamp.UnixNano(),
-			StopPosition:   opts.StopPosition.toProto(),
-			StopOffset:     opts.StopOffset,
-			StopTimestamp:  opts.StopTimestamp.UnixNano(),
-			Partition:      opts.Partition,
-			ReadISRReplica: opts.ReadISRReplica,
-			Resume:         opts.Resume,
-		}
+
 		st, err = client.Subscribe(ctx, req)
 		if err != nil {
 			if status.Code(err) == codes.Unavailable {
@@ -1731,11 +1842,24 @@ LOOP:
 }
 
 // getAPIClient returns the API client for the given partition.
-func (c *client) getAPIClient(stream string, partition int32, readISRReplica bool) (proto.APIClient, error) {
-	addr, err := c.metadata.getAddr(stream, partition, readISRReplica)
+func (c *client) getAPIClientForPartition(stream string, partition int32, readISRReplica bool) (proto.APIClient, error) {
+	addr, err := c.metadata.getAddrForPartition(stream, partition, readISRReplica)
 	if err != nil {
 		return nil, err
 	}
+	return c.getAPIClient(addr)
+}
+
+// getAPIClientForBroker returns the API client for the given broker.
+func (c *client) getAPIClientForBroker(id string) (proto.APIClient, error) {
+	addr, err := c.metadata.getAddrForBroker(id)
+	if err != nil {
+		return nil, err
+	}
+	return c.getAPIClient(addr)
+}
+
+func (c *client) getAPIClient(addr string) (proto.APIClient, error) {
 	client, err := c.brokers.FromAddr(addr)
 	if err != nil {
 		return nil, err
@@ -1744,11 +1868,12 @@ func (c *client) getAPIClient(stream string, partition int32, readISRReplica boo
 }
 
 func (c *client) updateMetadata(ctx context.Context) (*Metadata, error) {
+	// TODO: remove this and have FetchMetadata update brokers?
 	var (
 		metadata *Metadata
 		err      error
 	)
-	if metadata, err = c.metadata.update(ctx); err != nil {
+	if metadata, err = c.metadata.update(ctx, nil, nil, true); err != nil {
 		return nil, err
 	}
 	if err = c.brokers.Update(ctx, c.metadata.getAddrs()); err != nil {
@@ -1785,7 +1910,7 @@ func (c *client) doResilientLeaderRPC(ctx context.Context, rpc func(client proto
 		client proto.APIClient
 	)
 	for i := 0; i < 5; i++ {
-		client, err = c.getAPIClient(stream, partition, false)
+		client, err = c.getAPIClientForPartition(stream, partition, false)
 		if err != nil {
 			sleepContext(ctx, 50*time.Millisecond)
 			c.updateMetadata(ctx)
