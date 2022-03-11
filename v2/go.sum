@@ -61,6 +61,8 @@ github.com/liftbridge-io/liftbridge-api v1.7.1-0.20220111235147-44a8787763ad h1:
 github.com/liftbridge-io/liftbridge-api v1.7.1-0.20220111235147-44a8787763ad/go.mod h1:VKUkozs5yuD0jcJH8cALCPV1WdmncwXgkv8wX/ay35g=
 github.com/liftbridge-io/liftbridge-api v1.7.2-0.20220202163922-756eda7f1bbe h1:dJQs0WskGG/ZSROPnwMYok+Wu+q6Jr7AMhL8+yEkoVU=
 github.com/liftbridge-io/liftbridge-api v1.7.2-0.20220202163922-756eda7f1bbe/go.mod h1:VKUkozs5yuD0jcJH8cALCPV1WdmncwXgkv8wX/ay35g=
+github.com/liftbridge-io/liftbridge-api v1.7.2-0.20220311001744-a030bbfca925 h1:Q+fTeALRjZppm9z19VSGlvj5JjAIogDhK024eRcYUCw=
+github.com/liftbridge-io/liftbridge-api v1.7.2-0.20220311001744-a030bbfca925/go.mod h1:VKUkozs5yuD0jcJH8cALCPV1WdmncwXgkv8wX/ay35g=
 github.com/nats-io/jwt v0.3.0/go.mod h1:fRYCDE99xlTsqUzISS1Bi75UBJ6ljOJQOAAu5VglpSg=
 github.com/nats-io/jwt v0.3.2 h1:+RB5hMpXUUA2dfxuhBTEkMOrYmM+gKIZYS1KjSostMI=
 github.com/nats-io/jwt v0.3.2/go.mod h1:/euKqTS1ZD+zzjYrY7pseZrTtWQSjujC7xjPc8wL6eU=

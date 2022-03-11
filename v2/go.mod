@@ -6,7 +6,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/golang/protobuf v1.5.2
 	github.com/kr/pretty v0.1.0 // indirect
-	github.com/liftbridge-io/liftbridge-api v1.7.2-0.20220202163922-756eda7f1bbe
+	github.com/liftbridge-io/liftbridge-api v1.7.2-0.20220311001744-a030bbfca925
 	github.com/nats-io/nats-server/v2 v2.1.4 // indirect
 	github.com/nats-io/nats.go v1.9.2
 	github.com/nats-io/nuid v1.0.1
