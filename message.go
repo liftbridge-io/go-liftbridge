@@ -5,11 +5,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	pb "github.com/golang/protobuf/proto"
 	"hash/crc32"
 	"sync"
 	"time"
 
-	pb "github.com/golang/protobuf/proto"
 	proto "github.com/liftbridge-io/liftbridge-api/go"
 )
 

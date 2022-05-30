@@ -104,26 +104,40 @@ func (m *mockServer) Stop(t require.TestingT) {
 }
 
 type mockAPI struct {
-	mu                        sync.Mutex
-	createStreamRequests      []*proto.CreateStreamRequest
-	deleteStreamRequests      []*proto.DeleteStreamRequest
-	pauseStreamRequests       []*proto.PauseStreamRequest
-	setStreamReadonlyRequests []*proto.SetStreamReadonlyRequest
-	subscribeRequests         []*proto.SubscribeRequest
-	fetchMetadataRequests     []*proto.FetchMetadataRequest
-	publishRequests           []*proto.PublishRequest
-	publishToSubjectRequests  []*proto.PublishToSubjectRequest
-	responses                 []interface{}
-	messages                  []*proto.Message
-	createStreamErr           error
-	deleteStreamErr           error
-	pauseStreamErr            error
-	setStreamReadonlyErr      error
-	subscribeErr              error
-	subscribeAsyncErr         error
-	fetchMetadataErr          error
-	publishErr                error
-	publishToSubjectErr       error
+	mu                                     sync.Mutex
+	createStreamRequests                   []*proto.CreateStreamRequest
+	deleteStreamRequests                   []*proto.DeleteStreamRequest
+	pauseStreamRequests                    []*proto.PauseStreamRequest
+	setStreamReadonlyRequests              []*proto.SetStreamReadonlyRequest
+	subscribeRequests                      []*proto.SubscribeRequest
+	fetchMetadataRequests                  []*proto.FetchMetadataRequest
+	publishRequests                        []*proto.PublishRequest
+	publishToSubjectRequests               []*proto.PublishToSubjectRequest
+	fetchPartitionMetadataRequests         []*proto.FetchPartitionMetadataRequest
+	setCursorRequests                      []*proto.SetCursorRequest
+	fetchCursorRequests                    []*proto.FetchCursorRequest
+	joinConsumerGroupRequests              []*proto.JoinConsumerGroupRequest
+	leaveConsumerGroupRequests             []*proto.LeaveConsumerGroupRequest
+	fetchConsumerGroupAssignmentsRequests  []*proto.FetchConsumerGroupAssignmentsRequest
+	reportConsumerGroupCoordinatorRequests []*proto.ReportConsumerGroupCoordinatorRequest
+	responses                              []interface{}
+	messages                               []*proto.Message
+	createStreamErr                        error
+	deleteStreamErr                        error
+	pauseStreamErr                         error
+	setStreamReadonlyErr                   error
+	subscribeErr                           error
+	subscribeAsyncErr                      error
+	fetchMetadataErr                       error
+	publishErr                             error
+	publishToSubjectErr                    error
+	fetchPartitionMetadataErr              error
+	setCursorErr                           error
+	fetchCursorErr                         error
+	joinConsumerGroupErr                   error
+	leaveConsumerGroupErr                  error
+	fetchConsumerGroupAssignmentsErr       error
+	reportConsumerGroupCoordinatorErr      error
 }
 
 func newMockAPI() *mockAPI {
@@ -377,4 +391,109 @@ func (m *mockAPI) PublishToSubject(ctx context.Context, in *proto.PublishToSubje
 	}
 	resp := m.getResponse()
 	return resp.(*proto.PublishToSubjectResponse), nil
+}
+
+func (m *mockAPI) FetchPartitionMetadata(
+	ctx context.Context, in *proto.FetchPartitionMetadataRequest,
+) (*proto.FetchPartitionMetadataResponse, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.fetchPartitionMetadataRequests = append(m.fetchPartitionMetadataRequests, in)
+	if m.fetchPartitionMetadataErr != nil {
+		err := m.fetchPartitionMetadataErr
+		m.fetchPartitionMetadataErr = nil
+		return nil, err
+	}
+	resp := m.getResponse()
+	return resp.(*proto.FetchPartitionMetadataResponse), nil
+}
+
+func (m *mockAPI) SetCursor(
+	ctx context.Context, in *proto.SetCursorRequest,
+) (*proto.SetCursorResponse, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.setCursorRequests = append(m.setCursorRequests, in)
+	if m.setCursorErr != nil {
+		err := m.setCursorErr
+		m.setCursorErr = nil
+		return nil, err
+	}
+	resp := m.getResponse()
+	return resp.(*proto.SetCursorResponse), nil
+}
+
+func (m *mockAPI) FetchCursor(
+	ctx context.Context, in *proto.FetchCursorRequest,
+) (*proto.FetchCursorResponse, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.fetchCursorRequests = append(m.fetchCursorRequests, in)
+	if m.fetchCursorErr != nil {
+		err := m.fetchCursorErr
+		m.fetchCursorErr = nil
+		return nil, err
+	}
+	resp := m.getResponse()
+	return resp.(*proto.FetchCursorResponse), nil
+}
+
+func (m *mockAPI) JoinConsumerGroup(
+	ctx context.Context, in *proto.JoinConsumerGroupRequest,
+) (*proto.JoinConsumerGroupResponse, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.joinConsumerGroupRequests = append(m.joinConsumerGroupRequests, in)
+	if m.joinConsumerGroupErr != nil {
+		err := m.joinConsumerGroupErr
+		m.joinConsumerGroupErr = nil
+		return nil, err
+	}
+	resp := m.getResponse()
+	return resp.(*proto.JoinConsumerGroupResponse), nil
+}
+
+func (m *mockAPI) LeaveConsumerGroup(
+	ctx context.Context, in *proto.LeaveConsumerGroupRequest,
+) (*proto.LeaveConsumerGroupResponse, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.leaveConsumerGroupRequests = append(m.leaveConsumerGroupRequests, in)
+	if m.leaveConsumerGroupErr != nil {
+		err := m.leaveConsumerGroupErr
+		m.leaveConsumerGroupErr = nil
+		return nil, err
+	}
+	resp := m.getResponse()
+	return resp.(*proto.LeaveConsumerGroupResponse), nil
+}
+
+func (m *mockAPI) FetchConsumerGroupAssignments(
+	ctx context.Context, in *proto.FetchConsumerGroupAssignmentsRequest,
+) (*proto.FetchConsumerGroupAssignmentsResponse, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.fetchConsumerGroupAssignmentsRequests = append(m.fetchConsumerGroupAssignmentsRequests, in)
+	if m.fetchConsumerGroupAssignmentsErr != nil {
+		err := m.fetchConsumerGroupAssignmentsErr
+		m.fetchConsumerGroupAssignmentsErr = nil
+		return nil, err
+	}
+	resp := m.getResponse()
+	return resp.(*proto.FetchConsumerGroupAssignmentsResponse), nil
+}
+
+func (m *mockAPI) ReportConsumerGroupCoordinator(
+	ctx context.Context, in *proto.ReportConsumerGroupCoordinatorRequest,
+) (*proto.ReportConsumerGroupCoordinatorResponse, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.reportConsumerGroupCoordinatorRequests = append(m.reportConsumerGroupCoordinatorRequests, in)
+	if m.reportConsumerGroupCoordinatorErr != nil {
+		err := m.reportConsumerGroupCoordinatorErr
+		m.reportConsumerGroupCoordinatorErr = nil
+		return nil, err
+	}
+	resp := m.getResponse()
+	return resp.(*proto.ReportConsumerGroupCoordinatorResponse), nil
 }
