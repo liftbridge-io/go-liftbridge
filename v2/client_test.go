@@ -1911,6 +1911,73 @@ func TestConnectToServerBasedOnWorkLoad(t *testing.T) {
 	require.Len(t, metadata.Brokers(), 2)
 }
 
+func TestAddPolicy(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
+
+	server.SetupMockAddPolicyResponse(new(proto.AddPolicyResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)},
+		AckWaitTime(time.Nanosecond))
+	require.NoError(t, err)
+	defer client.Close()
+
+	err = client.AddPolicy(context.Background(), "a", "b", "read")
+	require.NoError(t, err)
+}
+
+func TestRevokePolicy(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
+
+	server.SetupMockRevokePolicyResponse(new(proto.RevokePolicyResponse))
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)},
+		AckWaitTime(time.Nanosecond))
+	require.NoError(t, err)
+	defer client.Close()
+
+	err = client.RevokePolicy(context.Background(), "a", "b", "read")
+	require.NoError(t, err)
+}
+
+func TestListPolicy(t *testing.T) {
+	server := newMockServer()
+	defer server.Stop(t)
+	port := server.Start(t)
+
+	mockPolicies := make(map[int32]*proto.ACLPolicy)
+	mockPolicies[0] = &proto.ACLPolicy{UserId: "a", ResourceId: "b", Action: "read"}
+	mockPolicies[1] = &proto.ACLPolicy{UserId: "c", ResourceId: "d", Action: "write"}
+
+	server.SetupMockFetchMetadataResponse(new(proto.FetchMetadataResponse))
+
+	server.SetupMockListPolicyResponse(&proto.ListPolicyResponse{Policies: mockPolicies})
+
+	client, err := Connect([]string{fmt.Sprintf("localhost:%d", port)},
+		AckWaitTime(time.Nanosecond))
+	require.NoError(t, err)
+	defer client.Close()
+
+	policies, err := client.ListPolicy(context.Background())
+	require.NoError(t, err)
+
+	expectedPolicies := make(map[int32]*ACLPolicy)
+	for i, policy := range mockPolicies {
+
+		expectedPolicies[int32(i)] = &ACLPolicy{
+			UserId: policy.UserId, ResourceId: policy.ResourceId, Action: policy.Action}
+	}
+
+	require.Equal(t, expectedPolicies, policies)
+}
+
 func ExampleConnect() {
 	addr := "localhost:9292"
 	client, err := Connect([]string{addr})

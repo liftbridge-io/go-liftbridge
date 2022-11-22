@@ -578,6 +578,15 @@ type Client interface {
 	// consumes a set of streams. Liftbridge handles assigning partitions to
 	// the group members and tracking the group's position in the streams.
 	CreateConsumer(groupID string, opts ...ConsumerOption) (*Consumer, error)
+
+	// AddPolicy add an ACL policy to the cluster
+	AddPolicy(ctx context.Context, UserId, ResourceId, Action string) error
+
+	// RevokePolicy revokes an existing ACL policy from the cluster
+	RevokePolicy(ctx context.Context, UserId, ResourceId, Action string) error
+
+	// ListPolicy retrieves all existing ACL policies from the cluster
+	ListPolicy(ctx context.Context) (map[int32]*ACLPolicy, error)
 }
 
 // client implements the Client interface. It maintains a pool of connections
@@ -1576,6 +1585,63 @@ func (c *client) FetchCursor(ctx context.Context, id, stream string, partition i
 		return nil
 	}, cursorsStream, cursorsPartition)
 	return offset, err
+}
+
+// AddPolicy adds an ACL style authorization policy to the cluster.
+// The client must either be `root` or have `AddPolicy` permission to execute this operation
+func (c *client) AddPolicy(ctx context.Context, userId, resourceId, action string) error {
+	var (
+		req = &proto.AddPolicyRequest{}
+	)
+
+	err := c.doResilientRPC(ctx, func(client proto.APIClient) error {
+		_, err := client.AddPolicy(ctx, req)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+	return err
+}
+
+// RevokePolicy removes an existing authorization policy from the cluster.
+// The client must either be `root` or have `RevokePolicy` permission to execute this operation
+func (c *client) RevokePolicy(ctx context.Context, userId, resourceId, action string) error {
+	var (
+		req = &proto.RevokePolicyRequest{}
+	)
+
+	err := c.doResilientRPC(ctx, func(client proto.APIClient) error {
+		_, err := client.RevokePolicy(ctx, req)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+	return err
+}
+
+// ListPolicy lists all existing ACL authorization policies from the cluster.
+// The client must either be `root` or have `ListPolicy` permission to execute this operation
+func (c *client) ListPolicy(ctx context.Context) (map[int32]*ACLPolicy, error) {
+	var (
+		req      = &proto.ListPolicyRequest{}
+		policies = make(map[int32]*ACLPolicy)
+	)
+
+	err := c.doResilientRPC(ctx, func(client proto.APIClient) error {
+		resp, err := client.ListPolicy(ctx, req)
+		if err != nil {
+			return err
+		}
+		for i, policy := range resp.Policies {
+
+			policies[int32(i)] = &ACLPolicy{
+				UserId: policy.UserId, ResourceId: policy.ResourceId, Action: policy.Action}
+		}
+		return nil
+	})
+	return policies, err
 }
 
 func (c *client) getCursorKey(cursorID, streamName string, partitionID int32) []byte {
