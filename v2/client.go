@@ -579,7 +579,7 @@ type Client interface {
 	// the group members and tracking the group's position in the streams.
 	CreateConsumer(groupID string, opts ...ConsumerOption) (*Consumer, error)
 
-	// AddPolicy add an ACL policy to the cluster
+	// AddPolicy adds an ACL policy to the cluster
 	AddPolicy(ctx context.Context, UserId, ResourceId, Action string) error
 
 	// RevokePolicy revokes an existing ACL policy from the cluster
@@ -1634,11 +1634,12 @@ func (c *client) ListPolicy(ctx context.Context) (map[int32]*ACLPolicy, error) {
 		if err != nil {
 			return err
 		}
-		for i, policy := range resp.Policies {
 
+		for i, policy := range resp.Policies {
 			policies[int32(i)] = &ACLPolicy{
 				UserId: policy.UserId, ResourceId: policy.ResourceId, Action: policy.Action}
 		}
+
 		return nil
 	})
 	return policies, err
