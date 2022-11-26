@@ -1591,7 +1591,10 @@ func (c *client) FetchCursor(ctx context.Context, id, stream string, partition i
 // The client must either be `root` or have `AddPolicy` permission to execute this operation
 func (c *client) AddPolicy(ctx context.Context, userId, resourceId, action string) error {
 	var (
-		req = &proto.AddPolicyRequest{}
+		req = &proto.AddPolicyRequest{Policy: &proto.ACLPolicy{
+			UserId:     userId,
+			ResourceId: resourceId,
+			Action:     action}}
 	)
 
 	err := c.doResilientRPC(ctx, func(client proto.APIClient) error {
@@ -1608,7 +1611,10 @@ func (c *client) AddPolicy(ctx context.Context, userId, resourceId, action strin
 // The client must either be `root` or have `RevokePolicy` permission to execute this operation
 func (c *client) RevokePolicy(ctx context.Context, userId, resourceId, action string) error {
 	var (
-		req = &proto.RevokePolicyRequest{}
+		req = &proto.RevokePolicyRequest{Policy: &proto.ACLPolicy{
+			UserId:     userId,
+			ResourceId: resourceId,
+			Action:     action}}
 	)
 
 	err := c.doResilientRPC(ctx, func(client proto.APIClient) error {
