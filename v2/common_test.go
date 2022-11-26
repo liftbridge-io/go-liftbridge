@@ -123,6 +123,9 @@ type mockAPI struct {
 	joinConsumerGroupRequests             []*proto.JoinConsumerGroupRequest
 	leaveConsumerGroupRequests            []*proto.LeaveConsumerGroupRequest
 	fetchConsumerGroupAssignmentsRequests []*proto.FetchConsumerGroupAssignmentsRequest
+	addPolicyRequests                     []*proto.AddPolicyRequest
+	revokePolicyRequests                  []*proto.RevokePolicyRequest
+	listPolicyRequests                    []*proto.ListPolicyRequest
 	responses                             map[string]interface{}
 	messages                              []*proto.Message
 	createStreamErr                       error
@@ -141,6 +144,9 @@ type mockAPI struct {
 	leaveConsumerGroupErr                 error
 	fetchConsumerGroupAssignmentsErr      error
 	fetchPartitionMetadataErr             error
+	addPolicyErr                          error
+	revokePolicyError                     error
+	listPolicyError                       error
 	// autclearError indicates where the mock API shall clear mock error automatically
 	autoClearError bool
 	// delayMetadataResponse indicates the FetchMetadata call shall be delayed for few seconds
@@ -164,6 +170,9 @@ func newMockAPI() *mockAPI {
 		joinConsumerGroupRequests:             []*proto.JoinConsumerGroupRequest{},
 		leaveConsumerGroupRequests:            []*proto.LeaveConsumerGroupRequest{},
 		fetchConsumerGroupAssignmentsRequests: []*proto.FetchConsumerGroupAssignmentsRequest{},
+		addPolicyRequests:                     []*proto.AddPolicyRequest{},
+		revokePolicyRequests:                  []*proto.RevokePolicyRequest{},
+		listPolicyRequests:                    []*proto.ListPolicyRequest{},
 		responses:                             make(map[string]interface{}),
 		autoClearError:                        false,
 	}
@@ -240,6 +249,18 @@ func (m *mockAPI) SetupMockFetchConsumerGroupAssignmentsResponse(responses inter
 
 func (m *mockAPI) SetupMockReportConsumerGroupCoordinatorResponse(responses interface{}) {
 	m.responses["ReportConsumerGroupCoordinator"] = responses
+}
+
+func (m *mockAPI) SetupMockAddPolicyResponse(responses interface{}) {
+	m.responses["AddPolicy"] = responses
+}
+
+func (m *mockAPI) SetupMockRevokePolicyResponse(responses interface{}) {
+	m.responses["RevokePolicy"] = responses
+}
+
+func (m *mockAPI) SetupMockListPolicyResponse(responses interface{}) {
+	m.responses["ListPolicy"] = responses
 }
 
 func (m *mockAPI) SetupMockCreateStreamError(err error) {
@@ -325,6 +346,24 @@ func (m *mockAPI) SetupMockFetchCursorError(err error) {
 	m.fetchCursorErr = err
 }
 
+func (m *mockAPI) SetupMockAddPolicyError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.addPolicyErr = err
+}
+
+func (m *mockAPI) SetupMockRevokePolicyError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.revokePolicyError = err
+}
+
+func (m *mockAPI) SetupMockListPolicyError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.listPolicyError = err
+}
+
 func (m *mockAPI) GetCreateStreamRequests() []*proto.CreateStreamRequest {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -395,6 +434,24 @@ func (m *mockAPI) GetLeaveConsumerGroupRequests() []*proto.LeaveConsumerGroupReq
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.leaveConsumerGroupRequests
+}
+
+func (m *mockAPI) GetAddPolicyRequests() []*proto.AddPolicyRequest {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.addPolicyRequests
+}
+
+func (m *mockAPI) GetRevokePolicyRequests() []*proto.RevokePolicyRequest {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.revokePolicyRequests
+}
+
+func (m *mockAPI) GetLisPolicyRequests() []*proto.ListPolicyRequest {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.listPolicyRequests
 }
 
 func (m *mockAPI) CreateStream(ctx context.Context, in *proto.CreateStreamRequest) (*proto.CreateStreamResponse, error) {
@@ -665,4 +722,52 @@ func (m *mockAPI) ReportConsumerGroupCoordinator(ctx context.Context,
 	in *proto.ReportConsumerGroupCoordinatorRequest) (*proto.ReportConsumerGroupCoordinatorResponse, error) {
 
 	return nil, errors.New("todo")
+}
+
+func (m *mockAPI) AddPolicy(ctx context.Context, in *proto.AddPolicyRequest) (*proto.AddPolicyResponse, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.addPolicyRequests = append(m.addPolicyRequests, in)
+	if m.addPolicyErr != nil {
+		err := m.addPolicyErr
+		if m.autoClearError {
+			m.addPolicyErr = nil
+		}
+		return nil, err
+	}
+	resp := m.responses["AddPolicy"]
+	return resp.(*proto.AddPolicyResponse), nil
+}
+
+func (m *mockAPI) RevokePolicy(ctx context.Context, in *proto.RevokePolicyRequest) (*proto.RevokePolicyResponse, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.revokePolicyRequests = append(m.revokePolicyRequests, in)
+	if m.revokePolicyError != nil {
+		err := m.revokePolicyError
+		if m.autoClearError {
+			m.revokePolicyError = nil
+		}
+		return nil, err
+	}
+	resp := m.responses["RevokePolicy"]
+	return resp.(*proto.RevokePolicyResponse), nil
+}
+
+func (m *mockAPI) ListPolicy(ctx context.Context, in *proto.ListPolicyRequest) (*proto.ListPolicyResponse, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.listPolicyRequests = append(m.listPolicyRequests, in)
+	if m.listPolicyError != nil {
+		err := m.listPolicyError
+		if m.autoClearError {
+			m.listPolicyError = nil
+		}
+		return nil, err
+	}
+	resp := m.responses["ListPolicy"]
+	return resp.(*proto.ListPolicyResponse), nil
 }
