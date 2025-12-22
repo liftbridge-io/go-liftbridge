@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	proto "github.com/liftbridge-io/liftbridge-api/go"
+	proto "github.com/liftbridge-io/liftbridge-api/v2/go"
 
 	pb "github.com/golang/protobuf/proto"
 )

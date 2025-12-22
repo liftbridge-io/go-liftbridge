@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	proto "github.com/liftbridge-io/liftbridge-api/go"
+	proto "github.com/liftbridge-io/liftbridge-api/v2/go"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
