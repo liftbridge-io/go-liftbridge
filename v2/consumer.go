@@ -12,7 +12,7 @@ import (
 
 	"github.com/nats-io/nuid"
 
-	proto "github.com/liftbridge-io/liftbridge-api/go"
+	proto "github.com/liftbridge-io/liftbridge-api/v2/go"
 )
 
 // ConsumerError is an error that occurs asynchronously on a consumer.
