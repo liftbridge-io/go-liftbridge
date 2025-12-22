@@ -8,7 +8,7 @@ system that provides lightweight, fault-tolerant message streams for
 
 This project is maintained by [Basekick Labs](https://github.com/Basekick-Labs), creators of [Arc](https://github.com/Basekick-Labs/arc).
 
-## What's New in v2.3.0
+## What's New in v2.4.0
 
 - **Modernized Dependencies**: Updated to Go 1.25.3 and migrated from deprecated `gogo/protobuf` to official `google.golang.org/protobuf`
 - **API v2**: Now uses `liftbridge-api/v2` with the new protobuf tooling
