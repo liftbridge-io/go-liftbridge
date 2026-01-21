@@ -442,3 +442,9 @@ func (m *metadataCache) get() *Metadata {
 	defer m.mu.RUnlock()
 	return m.metadata
 }
+
+type ACLPolicy struct {
+	UserId     string
+	ResourceId string
+	Action     string
+}
